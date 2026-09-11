@@ -38,6 +38,11 @@ define tags básicos, `LuaValue` e uma pilha que cresce pelo allocator do
 runtime. Ainda não representa a VM completa; strings, tabelas, closures,
 frames e GC serão adicionados sobre essa base.
 
+`src/platform/templeos/lua_table.hc` adiciona uma tabela hash de chaves
+inteiras, com sondagem linear, rehash e operações de leitura/escrita. Ela é
+uma etapa de infraestrutura; ainda não cobre chaves string, metatables,
+arrays Lua ou coleta de lixo.
+
 ## Ordem do port
 
 1. tipos e configuração (`luaconf.h`, `llimits.h`);

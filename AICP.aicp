@@ -8,6 +8,7 @@
 @mod id=templeos_exceptions path=src/platform/templeos/lua_exceptions.hc role="HolyC protected execution and error propagation"
 @mod id=templeos_runtime path=src/platform/templeos/lua_runtime.hc role="runtime lifetime owner joining memory and exceptions"
 @mod id=templeos_state path=src/platform/templeos/lua_state.hc role="initial HolyC Lua value and stack representation"
+@mod id=templeos_table path=src/platform/templeos/lua_table.hc role="integer-key hash table for the HolyC Lua state"
 @mod id=templeos_entry path=src/templeos/ role="TempleOS HolyC entrypoints"
 @mod id=lua_tests path=tests/lua/testes/ role="Lua reference tests"
 @mod id=docs path=docs/ role="port status and design notes"
@@ -22,6 +23,7 @@
 @contract id=holyc_exceptions path=src/platform/templeos/lua_exceptions.hc claim="protected callback returns the I64 status thrown by HolyC" evidence=src/platform/templeos/lua_exceptions.hc
 @contract id=holyc_runtime path=src/platform/templeos/lua_runtime.hc claim="runtime owns platform initialization, allocator state, protected calls, and shutdown" evidence=src/platform/templeos/lua_runtime.hc
 @contract id=holyc_state path=src/platform/templeos/lua_state.hc claim="LuaState owns a growable LuaValue stack and releases its storage through LuaRuntime" evidence=src/platform/templeos/lua_state.hc
+@contract id=holyc_table path=src/platform/templeos/lua_table.hc claim="integer-key table supports collision-safe set/get and releases entries through LuaRuntime" evidence=src/platform/templeos/lua_table.hc
 @task id=port_memory status=active next="connect LuaMemory to the HolyC Lua state implementation"
-@task id=port_state status=active next="add strings, tables, closures, call frames, and GC to LuaState"
+@task id=port_state status=active next="add strings, closures, call frames, and GC to LuaState"
 @task id=port_runtime status=active next="port memory first, then replace non-local error handling in ldo.c"
