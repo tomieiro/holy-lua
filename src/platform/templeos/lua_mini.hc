@@ -49,6 +49,8 @@ class LuaMiniParser {
   Bool skipping; /* parse without effects: dead branches, finished loops */
   Bool returned;
   Bool breaking;
+  Bool jumping; /* an active goto, seeking its label */
+  U8 jump_label[32];
   I64 loop_depth;
   F64 result;
 };
@@ -290,6 +292,7 @@ F64 LuaMiniEvalWithRegistry(U8 *source, LuaMiniRegistry *registry) {
   parser.skipping = FALSE;
   parser.returned = FALSE;
   parser.breaking = FALSE;
+  parser.jumping = FALSE;
   parser.loop_depth = 0;
   LuaMiniSkip(&parser);
   if (source[parser.position] == 'r' && source[parser.position + 1] == 'e' &&
@@ -336,7 +339,8 @@ U0 LuaMiniSubBlock(LuaMiniParser *parser, Bool execute) {
   parser->skipping = saved || !execute;
   LuaMiniBlock(parser);
   parser->binding_count = mark;
-  parser->skipping = saved || parser->returned || parser->breaking;
+  parser->skipping = saved || parser->returned || parser->breaking ||
+      parser->jumping;
 }
 
 U0 LuaMiniIf(LuaMiniParser *parser) {
@@ -390,6 +394,7 @@ U0 LuaMiniWhile(LuaMiniParser *parser) {
     LuaMiniExpect(parser, "do", 21);
     condition = condition && !parser->skipping;
     LuaMiniLoopBody(parser, condition);
+    if (parser->jumping) return;
     if (!condition || parser->returned) return;
     if (parser->breaking) {
       LuaMiniEndBreak(parser);
@@ -436,12 +441,41 @@ U0 LuaMiniFor(LuaMiniParser *parser) {
     if (running) LuaMiniDeclare(parser, name, value);
     LuaMiniLoopBody(parser, running);
     parser->binding_count = mark;
+    if (parser->jumping) return;
     if (!running || parser->returned) return;
     if (parser->breaking) {
       LuaMiniEndBreak(parser);
       return;
     }
     value += step;
+  }
+}
+
+/* repeat runs the body at least once, then loops while the condition
+   (parsed after `until`) is false. */
+U0 LuaMiniRepeat(LuaMiniParser *parser) {
+  I64 start;
+  Bool condition;
+  Bool active;
+  start = parser->position;
+  active = !parser->skipping;
+  while (TRUE) {
+    parser->position = start;
+    parser->loop_depth++;
+    LuaMiniSubBlock(parser, active);
+    parser->loop_depth--;
+    LuaMiniExpect(parser, "until", 17);
+    /* Unlike real Lua, the until condition cannot see locals declared in
+       the body: SubBlock already popped them back to the loop's mark. */
+    condition = LuaMiniCondition(parser);
+    if (parser->jumping) return;
+    if (parser->returned) return;
+    if (parser->breaking) {
+      LuaMiniEndBreak(parser);
+      return;
+    }
+    if (!active) return;
+    if (condition) return;
   }
 }
 
@@ -472,6 +506,17 @@ U0 LuaMiniStatement(LuaMiniParser *parser) {
   } else if (LuaMiniPeekWord(parser, "for")) {
     LuaMiniWord(parser, "for");
     LuaMiniFor(parser);
+  } else if (LuaMiniPeekWord(parser, "repeat")) {
+    LuaMiniWord(parser, "repeat");
+    LuaMiniRepeat(parser);
+  } else if (LuaMiniPeekWord(parser, "goto")) {
+    LuaMiniWord(parser, "goto");
+    LuaMiniReadName(parser, name);
+    if (!parser->skipping) {
+      parser->jumping = TRUE;
+      MemCpy(parser->jump_label, name, 32);
+      parser->skipping = TRUE;
+    }
   } else {
     Bool local;
     local = LuaMiniPeekWord(parser, "local");
@@ -487,15 +532,57 @@ U0 LuaMiniStatement(LuaMiniParser *parser) {
   if (parser->source[parser->position] == ';') parser->position++;
 }
 
-/* Parses statements until end, else, elseif, or end of source. */
+/* Parses statements until end, else, elseif, until, or end of source.
+   Labels (::name::) are recorded as seen; an active goto (parser->jumping)
+   resolves against a label recorded here, forward or backward, without
+   crossing this block's own end/until. An unresolved goto propagates to
+   the caller by leaving parser->jumping set when this block returns. */
 U0 LuaMiniBlock(LuaMiniParser *parser) {
+  U8 label_names[8][32];
+  I64 label_positions[8];
+  I64 label_marks[8];
+  I64 label_count;
+  U8 name[32];
+  I64 i;
+  label_count = 0;
   while (TRUE) {
     LuaMiniSkip(parser);
     if (parser->source[parser->position] == 0) return;
     if (LuaMiniPeekWord(parser, "end") || LuaMiniPeekWord(parser, "else") ||
-        LuaMiniPeekWord(parser, "elseif"))
+        LuaMiniPeekWord(parser, "elseif") || LuaMiniPeekWord(parser, "until"))
       return;
+    if (parser->source[parser->position] == ':' &&
+        parser->source[parser->position + 1] == ':') {
+      parser->position += 2;
+      LuaMiniReadName(parser, name);
+      LuaMiniSkip(parser);
+      if (parser->source[parser->position] != ':' ||
+          parser->source[parser->position + 1] != ':') throw(26);
+      parser->position += 2;
+      if (label_count < 8) {
+        MemCpy(label_names[label_count], name, 32);
+        label_positions[label_count] = parser->position;
+        label_marks[label_count] = parser->binding_count;
+        label_count++;
+      }
+      if (parser->jumping && LuaMiniNameEqual(name, parser->jump_label)) {
+        parser->jumping = FALSE;
+        parser->skipping = FALSE;
+      }
+      continue;
+    }
     LuaMiniStatement(parser);
+    if (parser->jumping) {
+      for (i = 0; i < label_count; i++) {
+        if (LuaMiniNameEqual(label_names[i], parser->jump_label)) {
+          parser->position = label_positions[i];
+          parser->binding_count = label_marks[i];
+          parser->jumping = FALSE;
+          parser->skipping = FALSE;
+          break;
+        }
+      }
+    }
   }
 }
 
@@ -509,9 +596,11 @@ F64 LuaMiniRunWithRegistry(U8 *source, LuaMiniRegistry *registry) {
   parser.skipping = FALSE;
   parser.returned = FALSE;
   parser.breaking = FALSE;
+  parser.jumping = FALSE;
   parser.loop_depth = 0;
   parser.result = 0;
   LuaMiniBlock(&parser);
+  if (parser.jumping) throw(27);
   if (parser.source[parser.position] != 0) throw(4);
   if (!parser.returned) throw(8);
   return parser.result;

@@ -76,4 +76,23 @@ U0 main() {
   if (result != 4) throw(26);
   result = LuaMiniRun("m = 0; for i = 1, 20 do m = i % 3 end return m");
   if (result != 2) throw(27);
+  result = LuaMiniRun("n = 0; repeat n = n + 1 until n >= 5 return n");
+  if (result != 5) throw(28);
+  result = LuaMiniRun("n = 0; repeat n = n + 1 until 1 == 1 return n");
+  if (result != 1) throw(29);
+  result = LuaMiniRun(
+      "s = 0; i = 0; repeat i = i + 1; if i > 3 then break end s = s + i "
+      "until i >= 100 return s");
+  if (result != 6) throw(30);
+  result = LuaMiniRun("n = 0; repeat n = n + 1; if n == 4 then return n end "
+      "until 1 == 2 return -1");
+  if (result != 4) throw(31);
+  result = LuaMiniRun(
+      "n = 0; ::top:: n = n + 1; if n < 5 then goto top end return n");
+  if (result != 5) throw(32);
+  result = LuaMiniRun("n = 5; goto skip n = 100 ::skip:: return n");
+  if (result != 5) throw(33);
+  result = LuaMiniRun("s = 0; for i = 1, 10 do if i == 5 then goto done end "
+      "s = s + i end ::done:: return s");
+  if (result != 10) throw(34);
 }

@@ -135,3 +135,24 @@ Há até 16 locais vivos e 16 globais.
 O operador `%` foi adicionado com a semântica de módulo floor de Lua (o
 resultado tem o sinal do divisor, ex.: `-1 % 5 == 4`), com a mesma precedência
 de `*` e `/`.
+
+`repeat ... until condição` executa o corpo ao menos uma vez e repete
+enquanto a condição for falsa. Diferente do Lua real, a condição do `until`
+não enxerga locais declarados no corpo: `LuaMiniSubBlock` já os descarta ao
+final do corpo antes da condição ser avaliada.
+
+`goto nome` e `::nome::` também são suportados. Cada bloco (`LuaMiniBlock`)
+mantém sua própria tabela de rótulos já vistos; um `goto` ativo desce a
+pilha de blocos correspondendo ao fluxo de execução real, primeiro
+procurando o rótulo no bloco atual (para trás, na tabela, ou para frente,
+continuando a busca em modo de salto) e, se não encontrado, propaga para o
+bloco chamador. Um rótulo nunca encontrado lança o erro 27. Diferente do
+Lua real, esta implementação não impede um `goto` de saltar para dentro do
+escopo de um bloco não executado (`if`/`elseif`/`else` não tomado) alcançado
+apenas como alvo do salto — a restrição de escopo do Lua real não é
+verificada.
+
+Descoberta durante a depuração deste milestone: a mensagem de diagnóstico
+`uncaught throw: N` do `hcc` v0.0.15 imprime o código lançado em
+**hexadecimal**, não decimal (`throw(17)` aparece como `11`). Não é um bug;
+é fácil de interpretar mal ao depurar um `throw` não capturado.

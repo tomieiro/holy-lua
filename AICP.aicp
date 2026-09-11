@@ -28,7 +28,7 @@
 @inv id=holy_c_call_test command="hcc -jit tests/holyc_call.hc" claim="native closure call executes through a protected frame" evidence=tests/holyc_call.hc
 @inv id=holy_c_mini_test command="hcc -jit tests/holyc_mini.hc" claim="numeric Lua nucleus evaluates arithmetic source end to end" evidence=tests/holyc_mini.hc
 @inv id=holy_c_mini_registry_test command="hcc -jit tests/holyc_mini.hc" claim="numeric Lua nucleus invokes a registered HolyC native function" evidence=tests/holyc_mini.hc
-@inv id=holy_c_mini_loops_test command="hcc -jit tests/holyc_mini.hc" claim="numeric Lua nucleus runs while, numeric for, nested if/elseif/else, break, and early return" evidence=tests/holyc_mini.hc
+@inv id=holy_c_mini_loops_test command="hcc -jit tests/holyc_mini.hc" claim="numeric Lua nucleus runs while, numeric for, repeat/until, nested if/elseif/else, break, goto/label, and early return" evidence=tests/holyc_mini.hc
 @inv id=holy_c_string_pool_test command="hcc -c -o build/hcc/holyc-table-test.o tests/holyc_table.hc" claim="table smoke test exercises interned string ownership" evidence=tests/holyc_table.hc
 @flow id=host_validation steps="make host -> make test"
 @flow id=templeos_preparation steps="make templeos-prepare -> compile .hc inside TempleOS"
@@ -46,12 +46,14 @@
 @contract id=holyc_gc_roots path=src/platform/templeos/lua_gc.hc claim="GC facade records state/table roots and sweeps pool-only strings without invalidating retained values" evidence=src/platform/templeos/lua_gc.hc
 @contract id=holyc_call path=src/platform/templeos/lua_call.hc claim="native closures execute through a growable frame stack and protected error boundary" evidence=src/platform/templeos/lua_call.hc
 @contract id=holyc_call_abi path=src/platform/templeos/lua_call.hc claim="native closure ABI writes result through an output I64 parameter to remain compatible with hcc function pointers" evidence=src/platform/templeos/lua_call.hc
-@contract id=holyc_mini_eval path=src/platform/templeos/lua_mini.hc claim="mini evaluator handles return, numeric literals, block-scoped locals and globals, calls to abs/sqrt/len, nested if/elseif/else blocks, break, while and numeric for loops, comparisons < <= > >= == ~=, parentheses, and arithmetic + - * / % with precedence and floored modulo" evidence=src/platform/templeos/lua_mini.hc
+@contract id=holyc_mini_eval path=src/platform/templeos/lua_mini.hc claim="mini evaluator handles return, numeric literals, block-scoped locals and globals, calls to abs/sqrt/len, nested if/elseif/else blocks, break, while/numeric for/repeat-until loops, goto/label jumps within the live block chain, comparisons < <= > >= == ~=, parentheses, and arithmetic + - * / % with precedence and floored modulo" evidence=src/platform/templeos/lua_mini.hc
 @contract id=holyc_mini_skip path=src/platform/templeos/lua_mini.hc claim="non-executed blocks are parsed in skip mode: no assignments, native calls, unknown-name or division errors" evidence=src/platform/templeos/lua_mini.hc
 @contract id=holyc_mini_registry path=src/platform/templeos/lua_mini.hc claim="registry exposes named native functions using output-parameter hcc ABI" evidence=src/platform/templeos/lua_mini.hc
 @task id=port_memory status=active next="connect LuaMemory to the HolyC Lua state implementation"
-@task id=port_state status=paused next="add general values (strings, booleans, nil, tables) to executable Lua nucleus" note="loops, elseif, break, block scoping and floored modulo implemented and validated with hcc -jit tests/holyc_mini.hc"
+@task id=port_state status=paused next="add general values (strings, booleans, nil, tables) to executable Lua nucleus; the F64-only value model must be generalized function by function, verified with hcc after each step, not as one large edit" note="loops, elseif, break, block scoping, floored modulo, repeat/until and goto/label implemented and validated with hcc -jit tests/holyc_mini.hc"
 @task id=port_strings status=active next="add garbage collection roots for interned strings and tables"
 @task id=port_gc status=active next="replace reference-counted string sweep with full object marking"
 @task id=port_runtime status=active next="port memory first, then replace non-local error handling in ldo.c"
 @risk id=hcc_f64_compare level=medium scope="src/platform/templeos/*.hc" note="hcc v0.0.15 misorders F64 against integer literals (use 0.0) and types F64 comparisons as F64 (no && with Bool, no Bool assignment)" evidence=src/platform/templeos/lua_mini.hc
+@risk id=hcc_throw_hex level=low scope="src/platform/templeos/*.hc" note="hcc v0.0.15's uncaught-throw diagnostic prints the thrown code in hex, not decimal (throw(17) prints '11'); not a bug, but easy to misread while debugging" evidence=src/platform/templeos/lua_mini.hc
+@risk id=mini_goto_scope level=low scope=mod.templeos_mini note="LuaMiniRun's goto/label resolves against any label reachable while unwinding the live block chain, including one inside an untaken if/elseif/else branch reached only as a jump target; real Lua forbids jumping into a block's scope, this nucleus does not enforce that" evidence=src/platform/templeos/lua_mini.hc
