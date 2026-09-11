@@ -12,4 +12,6 @@ testes/time-debug.txt
 testes/libs/all
 
 temp
-lua
+/lua
+
+build/
