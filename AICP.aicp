@@ -1,6 +1,7 @@
 @aicp version=1 format=line-oriented
 @stack root=README.md source_of_truth=repository
 @agent purpose="navigate and modify the Lua-to-HolyC TempleOS port" rule="verify paths and commands against repository evidence"
+@handoff status="paused" owner="user/Claude" scope="continue the HolyC nucleus port after the native registry milestone" rule="read this AICP before editing; do not assume full Lua VM support"
 @avoid path=build/ reason="generated artifacts; ignored by Git"
 @mod id=lua_reference path=src/lua/ role="Lua 5.4.9 reference implementation"
 @mod id=templeos_platform path=src/platform/templeos/ role="HolyC platform boundary"
@@ -26,6 +27,7 @@
 @inv id=holy_c_runtime_test command="hcc -jit tests/holyc_table.hc" claim="HolyC runtime/table smoke test executes successfully under hcc" evidence=tests/holyc_table.hc
 @inv id=holy_c_call_test command="hcc -jit tests/holyc_call.hc" claim="native closure call executes through a protected frame" evidence=tests/holyc_call.hc
 @inv id=holy_c_mini_test command="hcc -jit tests/holyc_mini.hc" claim="numeric Lua nucleus evaluates arithmetic source end to end" evidence=tests/holyc_mini.hc
+@inv id=holy_c_mini_registry_test command="hcc -jit tests/holyc_mini.hc" claim="numeric Lua nucleus invokes a registered HolyC native function" evidence=tests/holyc_mini.hc
 @inv id=holy_c_string_pool_test command="hcc -c -o build/hcc/holyc-table-test.o tests/holyc_table.hc" claim="table smoke test exercises interned string ownership" evidence=tests/holyc_table.hc
 @flow id=host_validation steps="make host -> make test"
 @flow id=templeos_preparation steps="make templeos-prepare -> compile .hc inside TempleOS"
@@ -44,8 +46,9 @@
 @contract id=holyc_call path=src/platform/templeos/lua_call.hc claim="native closures execute through a growable frame stack and protected error boundary" evidence=src/platform/templeos/lua_call.hc
 @contract id=holyc_call_abi path=src/platform/templeos/lua_call.hc claim="native closure ABI writes result through an output I64 parameter to remain compatible with hcc function pointers" evidence=src/platform/templeos/lua_call.hc
 @contract id=holyc_mini_eval path=src/platform/templeos/lua_mini.hc claim="mini evaluator handles return, numeric literals, locals, calls to abs/sqrt/len, conditionals, parentheses, and arithmetic precedence" evidence=src/platform/templeos/lua_mini.hc
+@contract id=holyc_mini_registry path=src/platform/templeos/lua_mini.hc claim="registry exposes named native functions using output-parameter hcc ABI" evidence=src/platform/templeos/lua_mini.hc
 @task id=port_memory status=active next="connect LuaMemory to the HolyC Lua state implementation"
-@task id=port_state status=active next="add general native function registration to the executable Lua nucleus"
+@task id=port_state status=paused next="add loops and general values to executable Lua nucleus" note="paused for delegation to Claude; native registry milestone is implemented and validated"
 @task id=port_strings status=active next="add garbage collection roots for interned strings and tables"
 @task id=port_gc status=active next="replace reference-counted string sweep with full object marking"
 @task id=port_runtime status=active next="port memory first, then replace non-local error handling in ldo.c"

@@ -101,5 +101,13 @@ funcional sobre o qual serão adicionados variáveis, chamadas e bytecode.
 
 O núcleo também suporta a forma limitada `if condição then return expr end`
 e `if condição then return expr else return expr end`, com comparações
-numéricas `<`, `>` e `==`. Essa gramática é intencionalmente pequena até que
-o registro geral de funções nativas esteja definido.
+numéricas `<`, `>` e `==`.
+
+Funções HolyC podem ser expostas ao núcleo por `LuaMiniRegistry`. Cada entrada
+associa um nome a uma função com a ABI `U0 func(F64 argumento, F64 *resultado)`;
+o resultado por parâmetro de saída evita o problema de retorno de funções
+através de ponteiros observado no `hcc`. `LuaMiniEvalWithRegistry` e
+`LuaMiniRunWithRegistry` aceitam o registro sem alterar as APIs de conveniência
+existentes. O registro é deliberadamente pequeno e estático nesta etapa;
+argumentos múltiplos, valores Lua gerais e closures completas continuam sendo
+trabalho do port principal.

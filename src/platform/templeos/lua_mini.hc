@@ -2,10 +2,45 @@
 
 #include "lua_state.hc"
 
+Bool LuaMiniNameEqual(U8 *left, U8 *right);
+
+class LuaMiniNative {
+  U8 name[32];
+  U0 (*function)(F64 argument, F64 *result);
+};
+
+class LuaMiniRegistry {
+  LuaMiniNative natives[8];
+  I64 count;
+};
+
+U0 LuaMiniRegistryInit(LuaMiniRegistry *registry) {
+  registry->count = 0;
+}
+
+U0 LuaMiniRegister(LuaMiniRegistry *registry, U8 *name,
+    U0 (*function)(F64 argument, F64 *result)) {
+  if (registry->count >= 8) throw(20);
+  MemCpy(registry->natives[registry->count].name, name, 31);
+  registry->natives[registry->count].name[31] = 0;
+  registry->natives[registry->count].function = function;
+  registry->count++;
+}
+
+LuaMiniNative *LuaMiniFindNative(LuaMiniRegistry *registry, U8 *name) {
+  I64 i;
+  if (!registry) return NULL;
+  for (i = 0; i < registry->count; i++)
+    if (LuaMiniNameEqual(registry->natives[i].name, name))
+      return &registry->natives[i];
+  return NULL;
+}
+
 class LuaMiniParser {
   U8 *source;
   I64 position;
   I64 binding_count;
+  LuaMiniRegistry *registry;
   U8 names[8][32];
   F64 values[8];
 };
@@ -19,6 +54,7 @@ U0 LuaMiniSkip(LuaMiniParser *parser) {
 }
 
 F64 LuaMiniExpression(LuaMiniParser *parser);
+Bool LuaMiniNameEqual(U8 *left, U8 *right);
 
 Bool LuaMiniIsName(U8 ch) {
   return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_';
@@ -124,7 +160,11 @@ F64 LuaMiniPrimary(LuaMiniParser *parser) {
         value = LuaMiniExpression(parser);
         if (LuaMiniNameEqual(name, "abs")) value = fabs(value);
         else if (LuaMiniNameEqual(name, "sqrt")) value = sqrt(value);
-        else throw(12);
+        else {
+          LuaMiniNative *native = LuaMiniFindNative(parser->registry, name);
+          if (!native) throw(12);
+          native->function(value, &value);
+        }
       }
       LuaMiniSkip(parser);
       if (parser->source[parser->position] != ')') throw(2);
@@ -179,13 +219,12 @@ Bool LuaMiniCondition(LuaMiniParser *parser) {
   left = LuaMiniExpression(parser);
   LuaMiniSkip(parser);
   operation = parser->source[parser->position++];
+  if (operation == '=' && parser->source[parser->position] == '=')
+    parser->position++;
   right = LuaMiniExpression(parser);
   if (operation == '>') return left > right;
   if (operation == '<') return left < right;
-  if (operation == '=' && parser->source[parser->position] == '=') {
-    parser->position++;
-    return left == right;
-  }
+  if (operation == '=') return left == right;
   throw(13);
   return FALSE;
 }
@@ -196,12 +235,13 @@ Bool LuaMiniWord(LuaMiniParser *parser, U8 *word) {
   return LuaMiniNameEqual(actual, word);
 }
 
-F64 LuaMiniEval(U8 *source) {
+F64 LuaMiniEvalWithRegistry(U8 *source, LuaMiniRegistry *registry) {
   LuaMiniParser parser;
   F64 result;
   parser.source = source;
   parser.position = 0;
   parser.binding_count = 0;
+  parser.registry = registry;
   LuaMiniSkip(&parser);
   if (source[parser.position] == 'r' && source[parser.position + 1] == 'e' &&
       source[parser.position + 2] == 't' && source[parser.position + 3] == 'u' &&
@@ -213,13 +253,20 @@ F64 LuaMiniEval(U8 *source) {
   return result;
 }
 
-F64 LuaMiniRun(U8 *source) {
+F64 LuaMiniEval(U8 *source) {
+  F64 result;
+  result = LuaMiniEvalWithRegistry(source, NULL);
+  return result;
+}
+
+F64 LuaMiniRunWithRegistry(U8 *source, LuaMiniRegistry *registry) {
   LuaMiniParser parser;
   U8 name[32];
   F64 result;
   parser.source = source;
   parser.position = 0;
   parser.binding_count = 0;
+  parser.registry = registry;
   while (TRUE) {
     LuaMiniSkip(&parser);
     if (parser.source[parser.position] == 0) throw(8);
@@ -282,4 +329,10 @@ F64 LuaMiniRun(U8 *source) {
     LuaMiniSkip(&parser);
     if (parser.source[parser.position] == ';') parser.position++;
   }
+}
+
+F64 LuaMiniRun(U8 *source) {
+  F64 result;
+  result = LuaMiniRunWithRegistry(source, NULL);
+  return result;
 }

@@ -2,8 +2,15 @@
 
 #include "../src/platform/templeos/lua_mini.hc"
 
+U0 Triple(F64 argument, F64 *result) {
+  *result = argument * 3;
+}
+
 U0 main() {
   F64 result;
+  LuaMiniRegistry registry;
+  LuaMiniRegistryInit(&registry);
+  LuaMiniRegister(&registry, "triple", &Triple);
   result = LuaMiniEval("return 2 + 3 * (4 - 1)");
   if (result != 11) throw(1);
   result = LuaMiniEval("10 / 2 + 0.5");
@@ -16,4 +23,8 @@ U0 main() {
   if (result != 9) throw(5);
   result = LuaMiniRun("if 1 > 2 then return 9 else return 6 end");
   if (result != 6) throw(6);
+  result = LuaMiniEvalWithRegistry("triple(4)", &registry);
+  if (result != 12) throw(7);
+  result = LuaMiniRunWithRegistry("return triple(5)", &registry);
+  if (result != 15) throw(8);
 }
