@@ -11,11 +11,13 @@
 @mod id=templeos_table path=src/platform/templeos/lua_table.hc role="integer-key hash table for the HolyC Lua state"
 @mod id=templeos_gc path=src/platform/templeos/lua_gc.hc role="initial root-aware collection facade"
 @mod id=templeos_call path=src/platform/templeos/lua_call.hc role="native closures and protected call frames"
+@mod id=templeos_mini path=src/platform/templeos/lua_mini.hc role="executable numeric Lua nucleus"
 @mod id=templeos_string path=src/platform/templeos/lua_string.hc role="length-aware hashed Lua strings"
 @mod id=templeos_entry path=src/templeos/ role="TempleOS HolyC entrypoints"
 @mod id=lua_tests path=tests/lua/testes/ role="Lua reference tests"
 @mod id=holyc_tests path=tests/holyc_table.hc role="HolyC table smoke test"
 @mod id=holyc_call_tests path=tests/holyc_call.hc role="HolyC closure/frame smoke test"
+@mod id=holyc_mini_tests path=tests/holyc_mini.hc role="end-to-end numeric Lua nucleus test"
 @mod id=docs path=docs/ role="port status and design notes"
 @inv id=host_build command="make host" claim="host interpreter builds from src/lua/" evidence=Makefile
 @inv id=holy_c_layer command="hcc -c -o build/hcc/lua-platform.o src/platform/templeos/templeos_api.hc" claim="platform layer compiles with hcc when installed" evidence=src/platform/templeos/templeos_api.hc
@@ -23,6 +25,7 @@
 @inv id=holy_c_table_test command="hcc -c -o build/hcc/holyc-table-test.o tests/holyc_table.hc" claim="string-key table smoke test compiles with hcc" evidence=tests/holyc_table.hc
 @inv id=holy_c_runtime_test command="hcc -jit tests/holyc_table.hc" claim="HolyC runtime/table smoke test executes successfully under hcc" evidence=tests/holyc_table.hc
 @inv id=holy_c_call_test command="hcc -jit tests/holyc_call.hc" claim="native closure call executes through a protected frame" evidence=tests/holyc_call.hc
+@inv id=holy_c_mini_test command="hcc -jit tests/holyc_mini.hc" claim="numeric Lua nucleus evaluates arithmetic source end to end" evidence=tests/holyc_mini.hc
 @inv id=holy_c_string_pool_test command="hcc -c -o build/hcc/holyc-table-test.o tests/holyc_table.hc" claim="table smoke test exercises interned string ownership" evidence=tests/holyc_table.hc
 @flow id=host_validation steps="make host -> make test"
 @flow id=templeos_preparation steps="make templeos-prepare -> compile .hc inside TempleOS"
@@ -40,8 +43,9 @@
 @contract id=holyc_gc_roots path=src/platform/templeos/lua_gc.hc claim="GC facade records state/table roots and sweeps pool-only strings without invalidating retained values" evidence=src/platform/templeos/lua_gc.hc
 @contract id=holyc_call path=src/platform/templeos/lua_call.hc claim="native closures execute through a growable frame stack and protected error boundary" evidence=src/platform/templeos/lua_call.hc
 @contract id=holyc_call_abi path=src/platform/templeos/lua_call.hc claim="native closure ABI writes result through an output I64 parameter to remain compatible with hcc function pointers" evidence=src/platform/templeos/lua_call.hc
+@contract id=holyc_mini_eval path=src/platform/templeos/lua_mini.hc claim="mini evaluator handles return, numeric literals, parentheses, and arithmetic precedence" evidence=src/platform/templeos/lua_mini.hc
 @task id=port_memory status=active next="connect LuaMemory to the HolyC Lua state implementation"
-@task id=port_state status=active next="add Lua bytecode instructions and an execution loop above call frames"
+@task id=port_state status=active next="add locals and function calls to the executable Lua nucleus"
 @task id=port_strings status=active next="add garbage collection roots for interned strings and tables"
 @task id=port_gc status=active next="replace reference-counted string sweep with full object marking"
 @task id=port_runtime status=active next="port memory first, then replace non-local error handling in ldo.c"
