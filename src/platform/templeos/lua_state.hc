@@ -47,6 +47,13 @@ U0 LuaValueSetString(LuaValue *value, LuaString *string) {
   LuaStringRetain(string);
 }
 
+U0 LuaValueAssign(LuaValue *destination, LuaValue *source) {
+  LuaValueRelease(destination);
+  *destination = *source;
+  if (source->type == LUA_HC_STRING)
+    LuaStringRetain(source->string);
+}
+
 Bool LuaStatePushString(LuaState *state, LuaString *string) {
   if (!LuaStateGrow(state, state->top + 1)) return FALSE;
   LuaValueNil(&state->stack[state->top]);

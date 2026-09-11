@@ -12,10 +12,12 @@
 @mod id=templeos_string path=src/platform/templeos/lua_string.hc role="length-aware hashed Lua strings"
 @mod id=templeos_entry path=src/templeos/ role="TempleOS HolyC entrypoints"
 @mod id=lua_tests path=tests/lua/testes/ role="Lua reference tests"
+@mod id=holyc_tests path=tests/holyc_table.hc role="HolyC table smoke test"
 @mod id=docs path=docs/ role="port status and design notes"
 @inv id=host_build command="make host" claim="host interpreter builds from src/lua/" evidence=Makefile
 @inv id=holy_c_layer command="hcc -c -o build/hcc/lua-platform.o src/platform/templeos/templeos_api.hc" claim="platform layer compiles with hcc when installed" evidence=src/platform/templeos/templeos_api.hc
 @inv id=holy_c_entry command="hcc -c -o build/hcc/lua-entry.o src/templeos/lua.hc" claim="TempleOS entry compiles with hcc when installed" evidence=src/templeos/lua.hc
+@inv id=holy_c_table_test command="hcc -c -o build/hcc/holyc-table-test.o tests/holyc_table.hc" claim="string-key table smoke test compiles with hcc" evidence=tests/holyc_table.hc
 @flow id=host_validation steps="make host -> make test"
 @flow id=templeos_preparation steps="make templeos-prepare -> compile .hc inside TempleOS"
 @resolver id=platform_boundary path=src/platform/templeos/templeos_api.hc resolves="memory,console,files,time"

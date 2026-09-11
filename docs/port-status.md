@@ -53,6 +53,11 @@ string ao ser atribuído, removido da stack ou encerrado. A tabela ainda usa
 somente chaves inteiras; o próximo passo é aplicar o mesmo ownership às
 entradas com chave string.
 
+As tabelas agora aceitam também `LuaString` como chave. A busca usa hash e
+comparação por conteúdo; a tabela retém a chave e os valores string e libera
+ambos no fechamento. O comportamento básico é exercitado em
+`tests/holyc_table.hc`.
+
 ## Ordem do port
 
 1. tipos e configuração (`luaconf.h`, `llimits.h`);
