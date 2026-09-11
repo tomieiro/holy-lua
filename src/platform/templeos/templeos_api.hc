@@ -1,4 +1,6 @@
-/* Lua platform boundary for TempleOS. Keep TempleOS-specific names here. */
+/* Lua platform boundary for TempleOS. Keep OS-specific names here. */
+
+#include "/usr/local/include/tos.HH"
 
 U0 LuaPlatformInit() { }
 U0 LuaPlatformShutdown() { }
@@ -18,7 +20,8 @@ U8 *LuaPlatformRealloc(U8 *old, I64 old_size, I64 new_size) {
   fresh = MAlloc(new_size);
   if (!fresh) return NULL;
   if (old) {
-    copy_size = old_size < new_size ? old_size : new_size;
+    copy_size = old_size;
+    if (new_size < copy_size) copy_size = new_size;
     MemCpy(fresh, old, copy_size);
     Free(old);
   }
@@ -30,12 +33,12 @@ U0 LuaPlatformFree(U8 *ptr) {
 }
 
 U0 LuaPlatformWrite(U8 *text) {
-  if (text) Print("%s", text);
+  if (text) printf("%s", text);
 }
 
 U0 LuaPlatformWriteLine(U8 *text) {
   LuaPlatformWrite(text);
-  Print("\n");
+  printf("\n");
 }
 
 U8 *LuaPlatformReadFile(U8 *name, I64 *size) {
@@ -47,5 +50,5 @@ Bool LuaPlatformWriteFile(U8 *name, U8 *data, I64 size) {
 }
 
 I64 LuaPlatformTicks() {
-  return cnts.jiffies;
+  return NowMilliseconds();
 }
