@@ -116,3 +116,28 @@ U0 LuaStringPoolClose(LuaStringPool *pool) {
   pool->head = NULL;
   pool->count = 0;
 }
+
+I64 LuaStringPoolCollect(LuaStringPool *pool) {
+  LuaString *current;
+  LuaString *previous;
+  LuaString *next;
+  I64 collected;
+  collected = 0;
+  previous = NULL;
+  current = pool->head;
+  while (current) {
+    next = current->next_interned;
+    if (current->references == 1) {
+      if (previous) previous->next_interned = next;
+      else pool->head = next;
+      current->next_interned = NULL;
+      LuaStringRelease(current);
+      pool->count--;
+      collected++;
+    } else {
+      previous = current;
+    }
+    current = next;
+  }
+  return collected;
+}

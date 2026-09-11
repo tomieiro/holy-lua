@@ -18,6 +18,7 @@
 @inv id=holy_c_layer command="hcc -c -o build/hcc/lua-platform.o src/platform/templeos/templeos_api.hc" claim="platform layer compiles with hcc when installed" evidence=src/platform/templeos/templeos_api.hc
 @inv id=holy_c_entry command="hcc -c -o build/hcc/lua-entry.o src/templeos/lua.hc" claim="TempleOS entry compiles with hcc when installed" evidence=src/templeos/lua.hc
 @inv id=holy_c_table_test command="hcc -c -o build/hcc/holyc-table-test.o tests/holyc_table.hc" claim="string-key table smoke test compiles with hcc" evidence=tests/holyc_table.hc
+@inv id=holy_c_runtime_test command="hcc -jit tests/holyc_table.hc" claim="HolyC runtime/table smoke test executes successfully under hcc" evidence=tests/holyc_table.hc
 @inv id=holy_c_string_pool_test command="hcc -c -o build/hcc/holyc-table-test.o tests/holyc_table.hc" claim="table smoke test exercises interned string ownership" evidence=tests/holyc_table.hc
 @flow id=host_validation steps="make host -> make test"
 @flow id=templeos_preparation steps="make templeos-prepare -> compile .hc inside TempleOS"
@@ -31,6 +32,7 @@
 @contract id=holyc_string path=src/platform/templeos/lua_string.hc claim="LuaString stores explicit length, NUL-terminated data, and content hash under runtime ownership" evidence=src/platform/templeos/lua_string.hc
 @contract id=holyc_string_ownership path=src/platform/templeos/lua_string.hc claim="LuaString lifetime is reference-counted and LuaValue releases string references" evidence=src/platform/templeos/lua_state.hc
 @contract id=holyc_string_pool path=src/platform/templeos/lua_string.hc claim="string pool interns equal byte sequences and holds one reference until pool close" evidence=src/platform/templeos/lua_string.hc
+@contract id=holyc_string_gc path=src/platform/templeos/lua_string.hc claim="pool sweep removes interned strings whose only remaining reference belongs to the pool" evidence=src/platform/templeos/lua_string.hc
 @task id=port_memory status=active next="connect LuaMemory to the HolyC Lua state implementation"
 @task id=port_state status=active next="add strings, closures, call frames, and GC to LuaState"
 @task id=port_strings status=active next="add garbage collection roots for interned strings and tables"

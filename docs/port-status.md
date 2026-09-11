@@ -76,3 +76,8 @@ inicial, não uma implementação simulada.
 O pool de strings em `lua_string.hc` reaproveita strings iguais por hash e
 conteúdo, mantém uma referência própria e a libera no encerramento. A raiz do
 pool ainda precisa ser incorporada ao GC definitivo do runtime.
+
+O pool também faz sweep de strings com apenas a referência-base do próprio
+pool. O smoke test cobre a coleta de uma string temporária e a preservação da
+string usada como chave de tabela; raízes completas de stack/tabelas ainda
+serão reunidas em um GC geral.
