@@ -1,7 +1,7 @@
 @aicp version=1 format=line-oriented
 @stack root=README.md source_of_truth=repository
 @agent purpose="navigate and modify the Lua-to-HolyC TempleOS port" rule="verify paths and commands against repository evidence"
-@handoff status="paused" owner="user/Claude" scope="continue the HolyC nucleus port after the block scoping milestone" rule="read this AICP before editing; do not assume full Lua VM support"
+@handoff status="reviewed" owner="user/Claude" scope="HolyC nucleus changes reviewed and history normalized; continue from the array-table milestone" rule="read this AICP before editing; do not assume full Lua VM support"
 @avoid path=build/ reason="generated artifacts; ignored by Git"
 @mod id=lua_reference path=src/lua/ role="Lua 5.4.9 reference implementation"
 @mod id=templeos_platform path=src/platform/templeos/ role="HolyC platform boundary"
@@ -50,7 +50,7 @@
 @contract id=holyc_mini_skip path=src/platform/templeos/lua_mini.hc claim="non-executed blocks are parsed in skip mode: no assignments, native calls, unknown-name or division errors" evidence=src/platform/templeos/lua_mini.hc
 @contract id=holyc_mini_registry path=src/platform/templeos/lua_mini.hc claim="registry exposes named native functions using output-parameter hcc ABI" evidence=src/platform/templeos/lua_mini.hc
 @task id=port_memory status=active next="connect LuaMemory to the HolyC Lua state implementation"
-@task id=port_state status=paused next="the mini nucleus now covers a minimally-usable language subset (scalars, tables, functions/recursion, coercion); next would be string-keyed tables, closures/upvalues, multiple return values, or beginning to bridge this nucleus onto the real lua_state/lua_table/lua_string/lua_call modules instead of remaining a self-contained parallel implementation" note="LuaMiniValue (nil/boolean/number/string/table), concatenation, and/or, print/type, bare call statements, comparisons-as-expressions, function name(...) ... end with real recursion, numeric-string coercion, and array-style tables ({...} literals, t[i] get/set, nesting, #, identity equality) implemented and validated with hcc -jit tests/holyc_mini.hc (75 assertions)"
+@task id=port_state status=paused next="the mini nucleus now covers a minimally-usable language subset (scalars, tables, functions/recursion, coercion); next would be string-keyed tables, closures/upvalues, multiple return values, or beginning to bridge this nucleus onto the real lua_state/lua_table/lua_string/lua_call modules instead of remaining a self-contained parallel implementation" note="LuaMiniValue (nil/boolean/number/string/table), concatenation, and/or, print/type, bare call statements, comparisons-as-expressions, function name(...) ... end with real recursion, numeric-string coercion, and array-style tables ({...} literals, t[i] get/set, nesting, #, identity equality) implemented and validated with hcc -jit tests/holyc_mini.hc (92 throw-coded assertions; 75 is stale in the latest commit body)"
 @task id=port_strings status=active next="add garbage collection roots for interned strings and tables"
 @task id=port_gc status=active next="replace reference-counted string sweep with full object marking"
 @task id=port_runtime status=active next="port memory first, then replace non-local error handling in ldo.c"
