@@ -17,6 +17,11 @@ O primeiro componente de runtime HolyC está em
 liberação e contabilidade de bytes vivos/alocações. Ele compila com `hcc`, mas
 ainda não substitui o `frealloc` do `global_State` em `src/lua/lmem.c`.
 
+O mecanismo HolyC de exceções está encapsulado em
+`src/platform/templeos/lua_exceptions.hc`. A função protegida captura o
+`I64` lançado. A integração com `luaD_rawrunprotected` ainda é o próximo
+passo do port do runtime.
+
 O checkout `../templeos` fornece o código-fonte e a documentação das APIs
 HolyC, incluindo `MAlloc`, `Free`, `MemCpy`, `Print`, `FileRead`, `FileWrite`
 e `cnts.jiffies`. Ele não contém neste workspace um compilador HolyC, uma
