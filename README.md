@@ -1,136 +1,127 @@
-# Lua para HolyC / TempleOS
+# Lua for HolyC / TempleOS
 
-Este projeto porta o interpretador Lua 5.4.9 para HolyC, com integração ao
-TempleOS. O objetivo não é apenas traduzir a sintaxe do C: é preservar a
-semântica da VM Lua enquanto substituir, de forma explícita, os serviços que
-normalmente vêm da libc e de um sistema POSIX.
+This repository is an independent porting workspace for bringing a usable Lua
+nucleus to HolyC and TempleOS. It is not the official Lua project, is not
+affiliated with or endorsed by Lua.org or PUC-Rio, and is not a replacement
+for the official Lua distribution.
 
-## Estado atual
+## Provenance and scope
 
-O snapshot original do Lua está em `src/lua/` e continua sendo a referência
-de comportamento. O build host está funcional e a primeira camada HolyC já
-compila com `hcc`. A VM completa ainda está em processo de conversão: a
-entrada `src/templeos/lua.hc` e a interface em
-`src/platform/templeos/templeos_api.hc` são a fundação da integração, não uma
-afirmação de que todos os subsistemas já executam no TempleOS.
+This repository was created from a fork of the official Lua source repository.
+The Lua 5.4.9 reference snapshot is kept in `src/lua/` so the port can be
+compared with upstream. Port-specific work is under
+`src/platform/templeos/`, `src/templeos/`, and the HolyC tests.
 
-## Por que existe uma camada de plataforma
+The goal is to adapt Lua's runtime concepts to HolyC and TempleOS, replacing
+POSIX/libc facilities such as `malloc`, `realloc`, `free`, `setjmp`,
+`longjmp`, `FILE`, `stdio`, dynamic loading, signals, locale, and time APIs
+with explicit TempleOS-facing boundaries. This is a port in progress, not a
+claim that the complete Lua VM and standard library already run on TempleOS.
 
-O Lua original depende de várias interfaces que não devem ser espalhadas pelo
-port:
+## Current status
 
-- `malloc`, `realloc`, `free`: memória dinâmica;
-- `setjmp` e `longjmp`: recuperação de erros não-locais;
-- `FILE*`, `stdio` e `readline`: console e arquivos;
-- `time`, `clock` e funções de calendário;
-- `dlopen`, `dlsym` e `dlclose`: bibliotecas dinâmicas;
-- sinais, locale, tipos da libc e formatação numérica.
+The executable HolyC nucleus in `src/platform/templeos/lua_mini.hc` currently
+covers a deliberately bounded language subset:
 
-Em TempleOS, essas responsabilidades devem conversar com as APIs HolyC,
-como `MAlloc`, `Free`, `MemCpy`, `FileRead`, `FileWrite`, `Print` e os
-contadores de tempo do sistema. A fronteira inicial está concentrada em
-`src/platform/templeos/templeos_api.hc`. Conforme a VM for portada, o código
-do runtime deve depender dessa fronteira, e não chamar diretamente APIs
-POSIX.
+- numbers, strings, booleans, `nil`, arithmetic, modulo, comparisons,
+  concatenation, truthiness, and `and`/`or` short-circuiting;
+- local/global assignments and block scoping;
+- `if`/`elseif`/`else`, `while`, numeric `for`, `repeat`/`until`, `break`,
+  `goto`, and labels;
+- user-defined functions, multiple arguments, and recursive calls;
+- fixed-capacity array-style tables with indexing, nesting, length, growth,
+  and identity equality;
+- a small registry for calling HolyC native functions through an `hcc`-safe
+  output-parameter ABI.
 
-## Organização do repositório
+This nucleus is useful for TempleOS experiments, but it is not yet the full
+Lua interpreter. It has fixed limits, no closures/upvalues, no string-keyed
+tables in the mini language, no multiple return values, and no complete
+garbage collector. The parallel runtime building blocks in `lua_memory.hc`,
+`lua_state.hc`, `lua_table.hc`, `lua_string.hc`, `lua_gc.hc`, and
+`lua_call.hc` still need to be connected to the full Lua implementation.
+
+The detailed inventory is in [`docs/port-status.md`](docs/port-status.md).
+The semantic map for agents is [`AICP.aicp`](AICP.aicp).
+
+## Repository layout
 
 ```text
-src/lua/                         Lua 5.4.9 original
-src/platform/templeos/           adaptação dos serviços de sistema
-src/templeos/                    entradas e programas .hc
-tests/lua/testes/                suíte de testes Lua
-docs/                            decisões e estado do port
-build/                           artefatos locais, ignorados pelo Git
-AICP.aicp                        mapa semântico para agentes
-Makefile                         comandos de desenvolvimento
+src/lua/                         upstream Lua 5.4.9 reference snapshot
+src/platform/templeos/           HolyC platform and nucleus code
+src/templeos/                    TempleOS HolyC entrypoints
+tests/lua/testes/                upstream Lua host test suite
+tests/holyc_*.hc                 HolyC smoke and nucleus tests
+docs/                            port status and design notes
+build/                           local generated artifacts, ignored by Git
+AICP.aicp                        semantic repository map
+Makefile                         host and TempleOS preparation commands
+LICENSE.md                      MIT license for this port repository
 ```
 
-Os nomes de arquivo novos usam extensões minúsculas. O include `tos.HH` é a
-única referência com extensão maiúscula porque é o nome fornecido pelo
-`hcc`; ele não pertence ao código deste repositório.
+New repository source files use lowercase extensions, including `.hc`. The
+`tos.HH` include is the external filename installed by `hcc` and remains
+capitalized because it does not belong to this repository.
 
-## Requisitos
+## Requirements and commands
 
-Para o build host, são necessários GCC ou Clang, Make e as bibliotecas de
-matemática, `dl` e readline disponíveis no sistema.
-
-Para validar HolyC localmente, este projeto usa o compilador `hcc`. A versão
-testada durante o desenvolvimento foi `hcc v0.0.15-beta`, que fornece
-`/usr/local/include/tos.HH`. Esse `hcc` é um compilador HolyC para o host; a
-validação final contra o kernel e as convenções do TempleOS deve também ser
-feita dentro de uma instalação/imagem TempleOS.
-
-## Comandos
+The host reference build requires a C compiler, Make, and the system math,
+dynamic-loading, and readline libraries. HolyC validation uses `hcc`; the
+development environment was validated with `hcc v0.0.15-beta`, which provides
+`/usr/local/include/tos.HH`. Final compatibility must also be checked inside
+the target TempleOS environment.
 
 ```sh
-# Compila o interpretador original no host.
-make host
-
-# Executa a entrada principal da suíte Lua no host.
-make test
-
-# Prepara os arquivos HolyC em build/templeos/.
-make templeos-prepare
-
-# Remove artefatos locais.
-make clean
+make host             # build the upstream/reference host interpreter
+make test             # run the upstream Lua test suite
+make templeos-prepare # collect .hc sources for a TempleOS-side build
+make clean            # remove local generated artifacts
 ```
 
-Para verificar diretamente a camada HolyC com o `hcc`:
+Direct HolyC checks with `hcc` are:
 
 ```sh
 mkdir -p build/hcc
-hcc -c -o build/hcc/lua-platform.o \
-  src/platform/templeos/templeos_api.hc
+hcc -c -o build/hcc/lua-platform.o src/platform/templeos/templeos_api.hc
 hcc -c -o build/hcc/lua-entry.o src/templeos/lua.hc
+hcc -c -o build/hcc/lua-mini.o src/platform/templeos/lua_mini.hc
+hcc -jit tests/holyc_mini.hc
 ```
 
-O `Makefile` host não tenta fingir que existe um cross-compiler TempleOS.
-`make templeos-prepare` apenas coleta os `.hc`; a compilação integrada ao
-TempleOS fica deliberadamente separada do build C host.
+`make templeos-prepare` only stages `.hc` files. It is not a TempleOS
+cross-compiler; compilation and execution in a real TempleOS image remain
+separate steps.
 
-## Estratégia de port
+## Porting strategy
 
-A ordem recomendada é:
+The upstream C implementation remains the behavioral reference. The planned
+sequence is to connect the HolyC allocator to Lua's `frealloc`, replace
+non-local error handling, port console/filesystem support, then progressively
+connect the VM, parser, GC, and libraries. Only after those foundations are
+stable should the HolyC extension API be finalized.
 
-1. alinhar tipos, limites e configuração em `luaconf.h` e `llimits.h`;
-2. ligar `lmem.c` a `LuaPlatformAlloc`, `LuaPlatformRealloc` e
-   `LuaPlatformFree`;
-3. substituir o mecanismo de erro de `ldo.c` por uma solução HolyC;
-4. portar console, leitura de código e arquivos de `lua.c`, `liolib.c` e
-   `loadlib.c`;
-5. converter a VM, o GC, o parser e as estruturas internas;
-6. reintroduzir bibliotecas padrão uma por vez;
-7. expor a API própria de extensões HolyC;
-8. executar os testes de conformidade no TempleOS.
+Platform-specific substitutions belong behind
+`src/platform/templeos/templeos_api.hc`, rather than being scattered through
+the reference sources. Intentional deviations should have focused HolyC tests
+and entries in `docs/port-status.md`.
 
-O comportamento do Lua original é o oráculo: cada mudança de runtime deve
-continuar passando o build/teste host quando aplicável e deve ganhar um teste
-específico quando a diferença for intencional para TempleOS.
+## License and relationship to Lua
 
-## API de extensões HolyC
+The HolyC porting code and repository contributions are released under the
+[MIT License](LICENSE.md). The upstream Lua source in `src/lua/` retains its
+original Lua license and copyright notices; those notices must remain intact
+in redistributions of that snapshot.
 
-A API pública ainda será definida depois que o estado e o ciclo de vida do
-runtime estiverem estáveis. A direção prevista é oferecer funções HolyC para:
+This repository's HolyC porting code is an independent derivative work built
+around that upstream snapshot. Nothing here is an official Lua release, an
+official TempleOS release, or an endorsement by Lua.org, PUC-Rio, or the
+TempleOS project. Official Lua questions belong on the
+[Lua mailing list](https://www.lua.org/lua-l.html); official releases are at
+[Lua.org](https://www.lua.org/download.html).
 
-- criar e destruir um estado Lua;
-- carregar/avaliar um buffer ou arquivo;
-- empilhar e ler números, strings, booleanos e userdata;
-- registrar tabelas de funções HolyC;
-- propagar erros Lua sem depender de `setjmp` da libc.
+## Contributing
 
-Essa API deve ser pequena, documentada e independente dos detalhes internos
-de `src/lua/`, permitindo que programas TempleOS usem Lua sem conhecer a VM.
-
-## Contribuindo
-
-Não altere silenciosamente o snapshot de referência para resolver um problema
-de plataforma. Primeiro coloque a adaptação em `src/platform/templeos/`,
-documente a diferença em `docs/port-status.md` e adicione uma verificação
-reproduzível. Commits devem ser pequenos e separar reorganização, build,
-camada de plataforma e alterações da VM.
-
-Please **do not** send pull requests. To report issues, post a message to the [Lua mailing list](https://www.lua.org/lua-l.html).
-
-Download official Lua releases from [Lua.org](https://www.lua.org/download.html).
+Keep upstream/reference changes separate from HolyC adaptations. Prefer small
+commits organized by one runtime capability, add reproducible checks, and
+update `AICP.aicp` whenever architecture, contracts, tests, or port tasks
+change.

@@ -1,6 +1,7 @@
 @aicp version=1 format=line-oriented
 @stack root=README.md source_of_truth=repository
 @agent purpose="navigate and modify the Lua-to-HolyC TempleOS port" rule="verify paths and commands against repository evidence"
+@mod id=license path=LICENSE.md role="MIT license for repository port code; upstream Lua notices remain in src/lua/"
 @handoff status="reviewed" owner="user/Claude" scope="HolyC nucleus changes reviewed and history normalized; continue from the array-table milestone" rule="read this AICP before editing; do not assume full Lua VM support"
 @avoid path=build/ reason="generated artifacts; ignored by Git"
 @mod id=lua_reference path=src/lua/ role="Lua 5.4.9 reference implementation"
