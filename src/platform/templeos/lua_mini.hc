@@ -79,10 +79,32 @@ F64 LuaMiniNumber(LuaMiniParser *parser) {
   return value;
 }
 
+F64 LuaMiniStringLength(LuaMiniParser *parser) {
+  F64 length;
+  LuaMiniSkip(parser);
+  if (parser->source[parser->position] != '"') throw(10);
+  parser->position++;
+  length = 0;
+  while (parser->source[parser->position] &&
+      parser->source[parser->position] != '"') {
+    if (parser->source[parser->position] == '\\' &&
+        parser->source[parser->position + 1]) parser->position++;
+    parser->position++;
+    length++;
+  }
+  if (parser->source[parser->position] != '"') throw(11);
+  parser->position++;
+  return length;
+}
+
 F64 LuaMiniPrimary(LuaMiniParser *parser) {
   F64 value;
   U8 name[32];
   LuaMiniSkip(parser);
+  if (parser->source[parser->position] == '-') {
+    parser->position++;
+    return -LuaMiniPrimary(parser);
+  }
   if (parser->source[parser->position] == '(') {
     parser->position++;
     value = LuaMiniExpression(parser);
@@ -93,8 +115,26 @@ F64 LuaMiniPrimary(LuaMiniParser *parser) {
   }
   if (LuaMiniIsName(parser->source[parser->position])) {
     LuaMiniReadName(parser, name);
+    LuaMiniSkip(parser);
+    if (parser->source[parser->position] == '(') {
+      parser->position++;
+      if (LuaMiniNameEqual(name, "len")) {
+        value = LuaMiniStringLength(parser);
+      } else {
+        value = LuaMiniExpression(parser);
+        if (LuaMiniNameEqual(name, "abs")) value = fabs(value);
+        else if (LuaMiniNameEqual(name, "sqrt")) value = sqrt(value);
+        else throw(12);
+      }
+      LuaMiniSkip(parser);
+      if (parser->source[parser->position] != ')') throw(2);
+      parser->position++;
+      return value;
+    }
     return LuaMiniLookup(parser, name);
   }
+  if (parser->source[parser->position] == '"')
+    return LuaMiniStringLength(parser);
   return LuaMiniNumber(parser);
 }
 

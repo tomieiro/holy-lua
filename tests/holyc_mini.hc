@@ -10,4 +10,6 @@ U0 main() {
   if (result != 5.5) throw(2);
   result = LuaMiniRun("x = 4; y = x * 3; return y + 1");
   if (result != 13) throw(3);
+  result = LuaMiniEval("abs(-8) + sqrt(9) + len(\"abc\")");
+  if (result != 14) throw(4);
 }
