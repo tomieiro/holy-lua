@@ -15,6 +15,7 @@ U0 CountedTriple(F64 argument, F64 *result) {
 U0 LuaMiniGeneralValues(LuaMiniRegistry *registry);
 U0 LuaMiniFunctionTests();
 U0 LuaMiniCoercionTests();
+U0 LuaMiniTableTests();
 
 U0 main() {
   F64 result;
@@ -272,5 +273,70 @@ U0 LuaMiniCoercionTests() {
       caught = TRUE;
     }
     if (!caught) throw(64);
+  }
+
+  LuaMiniTableTests();
+}
+
+/* Array-style tables: literals, indexing (including nesting), growth via
+   assignment, #, identity equality, out-of-bounds/wrong-type errors, and
+   pool exhaustion. */
+U0 LuaMiniTableTests() {
+  F64 result;
+  LuaMiniValue value;
+
+  result = LuaMiniRun("t = {10, 20, 30}; return t[1] + t[2] + t[3]");
+  if (result != 60) throw(65);
+
+  result = LuaMiniRun("t = {} for i = 1, 5 do t[i] = i * i end "
+      "s = 0 for i = 1, 5 do s = s + t[i] end return s");
+  if (result != 55) throw(66);
+
+  result = LuaMiniRun("t = {1, 2, 3} return #t");
+  if (result != 3) throw(67);
+  result = LuaMiniRun("t = {} t[10] = 5 return #t");
+  if (result != 10) throw(68);
+
+  value = LuaMiniRunValue("t = {1, 2, 3} return type(t)");
+  if (!LuaMiniNameEqual(value.text, "table")) throw(69);
+
+  result = LuaMiniRun("t = {1, {2, 3}, 4} return t[2][1] + t[2][2]");
+  if (result != 5) throw(70);
+
+  result = LuaMiniRun(
+      "function sum(t) s = 0 for i = 1, #t do s = s + t[i] end return s end "
+      "return sum({5, 10, 15})");
+  if (result != 30) throw(71);
+
+  /* Tables compare by identity, not content. */
+  result = LuaMiniRun("t1 = {1} if t1 == t1 then return 1 end return 0");
+  if (result != 1) throw(72);
+  result = LuaMiniRun(
+      "t1 = {1} t2 = {1} if t1 == t2 then return 1 end return 0");
+  if (result != 0) throw(72);
+
+  /* An unset slot within capacity reads as nil, not an error. */
+  value = LuaMiniRunValue("t = {} return t[1]");
+  if (value.type != MINI_NIL) throw(73);
+
+  {
+    Bool caught;
+    caught = FALSE;
+    try {
+      LuaMiniRun("t = {1, 2}; return t[100]");
+    } catch {
+      caught = TRUE;
+    }
+    if (!caught) throw(74);
+  }
+  {
+    Bool caught;
+    caught = FALSE;
+    try {
+      LuaMiniRun("x = 5; return x[1]");
+    } catch {
+      caught = TRUE;
+    }
+    if (!caught) throw(75);
   }
 }

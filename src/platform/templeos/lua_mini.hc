@@ -36,18 +36,23 @@ LuaMiniNative *LuaMiniFindNative(LuaMiniRegistry *registry, U8 *name) {
   return NULL;
 }
 
-/* A general Lua value for the mini nucleus: nil, boolean, number, or an
-   inline (heap-free) string up to 63 bytes. No tables or functions yet. */
+/* A general Lua value for the mini nucleus: nil, boolean, number, an inline
+   (heap-free) string up to 63 bytes, or a table. A table value only holds
+   an index into the parser's fixed table pool (LuaMiniTable below), so
+   LuaMiniValue itself stays small and cheap to copy regardless of table
+   support. */
 #define MINI_NIL 0
 #define MINI_BOOL 1
 #define MINI_NUMBER 2
 #define MINI_STRING 3
+#define MINI_TABLE 4
 
 class LuaMiniValue {
   U8 type;
   Bool boolean;
   F64 number;
   U8 text[64];
+  I64 table_index;
 };
 
 LuaMiniValue LuaMiniNil() {
@@ -56,6 +61,7 @@ LuaMiniValue LuaMiniNil() {
   v.boolean = FALSE;
   v.number = 0;
   v.text[0] = 0;
+  v.table_index = 0;
   return v;
 }
 
@@ -65,6 +71,7 @@ LuaMiniValue LuaMiniBoolValue(Bool boolean) {
   v.boolean = boolean;
   v.number = 0;
   v.text[0] = 0;
+  v.table_index = 0;
   return v;
 }
 
@@ -74,6 +81,7 @@ LuaMiniValue LuaMiniNumberValue(F64 number) {
   v.boolean = FALSE;
   v.number = number;
   v.text[0] = 0;
+  v.table_index = 0;
   return v;
 }
 
@@ -85,6 +93,17 @@ LuaMiniValue LuaMiniStringValue(U8 *text, I64 length) {
   if (length >= 64) length = 63;
   MemCpy(v.text, text, length);
   v.text[length] = 0;
+  v.table_index = 0;
+  return v;
+}
+
+LuaMiniValue LuaMiniTableValue(I64 table_index) {
+  LuaMiniValue v;
+  v.type = MINI_TABLE;
+  v.boolean = FALSE;
+  v.number = 0;
+  v.text[0] = 0;
+  v.table_index = table_index;
   return v;
 }
 
@@ -94,12 +113,15 @@ Bool LuaMiniTruthy(LuaMiniValue value) {
   return TRUE;
 }
 
-/* Structural equality: values of different types are never equal. */
+/* Structural equality for scalars; a table compares by identity (same
+   pool slot), matching real Lua's table-equality-by-reference. Values of
+   different types are never equal. */
 Bool LuaMiniValueEqual(LuaMiniValue left, LuaMiniValue right) {
   if (left.type != right.type) return FALSE;
   if (left.type == MINI_NUMBER) return left.number == right.number;
   if (left.type == MINI_BOOL) return left.boolean == right.boolean;
   if (left.type == MINI_STRING) return LuaMiniNameEqual(left.text, right.text);
+  if (left.type == MINI_TABLE) return left.table_index == right.table_index;
   return TRUE; /* both nil */
 }
 
@@ -188,6 +210,13 @@ U0 LuaMiniValueToBuf(LuaMiniValue value, U8 *buf) {
     MemCpy(buf, value.text, length + 1);
     return;
   }
+  if (value.type == MINI_TABLE) {
+    /* Real Lua shows an address (table: 0x...); a stable pool slot number
+       is this nucleus's equivalent. */
+    MemCpy(buf, "table: ", 7);
+    LuaMiniIntToStr(value.table_index, buf + 7);
+    return;
+  }
   LuaMiniFormatNumber(value.number, buf);
 }
 
@@ -225,6 +254,20 @@ class LuaMiniFunctionDef {
   U8 param_names[8][32];
 };
 
+/* An array-style table: 1-indexed, fixed capacity, no heap. A LuaMiniValue
+   of type MINI_TABLE only names a slot in the parser's pool (below); the
+   table's actual storage lives here so LuaMiniValue stays small and cheap
+   to copy. Tables persist for the life of one LuaMiniRun/LuaMiniEval call
+   and are never freed individually (no GC). */
+#define MINI_TABLE_CAPACITY 16
+#define MINI_MAX_TABLES 8
+
+class LuaMiniTable {
+  Bool used;
+  I64 length;
+  LuaMiniValue items[MINI_TABLE_CAPACITY];
+};
+
 class LuaMiniParser {
   U8 *source;
   I64 position;
@@ -240,6 +283,8 @@ class LuaMiniParser {
   I64 function_count;
   LuaMiniFunctionDef functions[8];
   I64 call_depth; /* recursion guard, shared with the real HolyC C stack */
+  I64 table_count;
+  LuaMiniTable tables[MINI_MAX_TABLES];
   Bool skipping; /* parse without effects: dead branches, finished loops */
   Bool returned;
   Bool breaking;
@@ -260,6 +305,7 @@ U0 LuaMiniSkip(LuaMiniParser *parser) {
 LuaMiniValue LuaMiniExpression(LuaMiniParser *parser);
 LuaMiniValue LuaMiniComparison(LuaMiniParser *parser);
 LuaMiniValue LuaMiniOr(LuaMiniParser *parser);
+LuaMiniValue LuaMiniPrimary(LuaMiniParser *parser);
 Bool LuaMiniNameEqual(U8 *left, U8 *right);
 Bool LuaMiniWord(LuaMiniParser *parser, U8 *word);
 Bool LuaMiniPeekWord(LuaMiniParser *parser, U8 *word);
@@ -324,6 +370,10 @@ F64 LuaMiniNum(LuaMiniParser *parser, LuaMiniValue value) {
 /* String length for `len(...)` and `#`; silently 0 while skipping. */
 F64 LuaMiniLen(LuaMiniParser *parser, LuaMiniValue value) {
   I64 length;
+  if (value.type == MINI_TABLE) {
+    if (parser->skipping) return 0.0;
+    return parser->tables[value.table_index].length(F64);
+  }
   if (value.type != MINI_STRING) {
     if (parser->skipping) return 0.0;
     throw(28);
@@ -331,6 +381,53 @@ F64 LuaMiniLen(LuaMiniParser *parser, LuaMiniValue value) {
   length = 0;
   while (value.text[length]) length++;
   return length(F64);
+}
+
+/* Allocates a fresh table from the pool; slots are never reclaimed
+   (no GC), so a program is limited to MINI_MAX_TABLES tables total. */
+LuaMiniValue LuaMiniNewTable(LuaMiniParser *parser) {
+  I64 slot;
+  I64 i;
+  LuaMiniValue value;
+  if (parser->table_count >= MINI_MAX_TABLES) throw(35);
+  slot = parser->table_count++;
+  parser->tables[slot].used = TRUE;
+  parser->tables[slot].length = 0;
+  for (i = 0; i < MINI_TABLE_CAPACITY; i++)
+    parser->tables[slot].items[i] = LuaMiniNil();
+  value = LuaMiniTableValue(slot);
+  return value;
+}
+
+/* 1-indexed like Lua; reading past the current length is fine (gives nil,
+   since unused slots are pre-initialized), but the index must still fall
+   within the table's fixed capacity. */
+LuaMiniValue LuaMiniIndexGet(LuaMiniParser *parser, LuaMiniValue base,
+    LuaMiniValue index_value) {
+  I64 i;
+  LuaMiniValue result;
+  if (parser->skipping) {
+    result = LuaMiniNil();
+    return result;
+  }
+  if (base.type != MINI_TABLE) throw(33);
+  i = LuaMiniNum(parser, index_value)(I64);
+  if (i < 1 || i > MINI_TABLE_CAPACITY) throw(34);
+  result = parser->tables[base.table_index].items[i - 1];
+  return result;
+}
+
+U0 LuaMiniIndexSet(LuaMiniParser *parser, LuaMiniValue base,
+    LuaMiniValue index_value, LuaMiniValue value) {
+  I64 i;
+  I64 slot;
+  if (parser->skipping) return;
+  if (base.type != MINI_TABLE) throw(33);
+  i = LuaMiniNum(parser, index_value)(I64);
+  if (i < 1 || i > MINI_TABLE_CAPACITY) throw(34);
+  slot = base.table_index;
+  parser->tables[slot].items[i - 1] = value;
+  if (i > parser->tables[slot].length) parser->tables[slot].length = i;
 }
 
 LuaMiniValue LuaMiniLookup(LuaMiniParser *parser, U8 *name) {
@@ -422,7 +519,7 @@ LuaMiniValue LuaMiniStringParse(LuaMiniParser *parser) {
   return value;
 }
 
-LuaMiniValue LuaMiniPrimary(LuaMiniParser *parser) {
+LuaMiniValue LuaMiniPrimaryBase(LuaMiniParser *parser) {
   LuaMiniValue value;
   U8 name[32];
   LuaMiniSkip(parser);
@@ -446,6 +543,43 @@ LuaMiniValue LuaMiniPrimary(LuaMiniParser *parser) {
     value = LuaMiniOr(parser);
     LuaMiniSkip(parser);
     if (parser->source[parser->position] != ')') throw(2);
+    parser->position++;
+    return value;
+  }
+  if (parser->source[parser->position] == '{') {
+    /* Array-style table literal: {expr, expr, ...}; a trailing comma or
+       semicolon before `}` is allowed. Only in skip mode is no table
+       actually allocated. */
+    Bool allocate;
+    parser->position++;
+    allocate = !parser->skipping;
+    if (allocate) value = LuaMiniNewTable(parser);
+    else value = LuaMiniNil();
+    LuaMiniSkip(parser);
+    if (parser->source[parser->position] != '}') {
+      I64 count;
+      count = 0;
+      while (TRUE) {
+        LuaMiniValue item;
+        LuaMiniValue index;
+        item = LuaMiniOr(parser);
+        count++;
+        if (allocate) {
+          index = LuaMiniNumberValue(count(F64));
+          LuaMiniIndexSet(parser, value, index, item);
+        }
+        LuaMiniSkip(parser);
+        if (parser->source[parser->position] == ',' ||
+            parser->source[parser->position] == ';') {
+          parser->position++;
+          LuaMiniSkip(parser);
+          if (parser->source[parser->position] == '}') break;
+          continue;
+        }
+        break;
+      }
+    }
+    if (parser->source[parser->position] != '}') throw(32);
     parser->position++;
     return value;
   }
@@ -510,6 +644,8 @@ LuaMiniValue LuaMiniPrimary(LuaMiniParser *parser) {
           value = LuaMiniStringValue("boolean", 7);
         else if (value.type == MINI_STRING)
           value = LuaMiniStringValue("string", 6);
+        else if (value.type == MINI_TABLE)
+          value = LuaMiniStringValue("table", 5);
         else value = LuaMiniStringValue("number", 6);
       } else {
         LuaMiniNative *native = LuaMiniFindNative(parser->registry, name);
@@ -546,6 +682,25 @@ LuaMiniValue LuaMiniPrimary(LuaMiniParser *parser) {
   }
   value = LuaMiniNumberValue(LuaMiniNumber(parser));
   return value;
+}
+
+/* Applies zero or more `[index]` suffixes to a primary value, so indexing
+   works on a name, a call result, a table literal, or a parenthesized
+   expression alike (`t[1]`, `f()[1]`, `{1,2,3}[2]`). */
+LuaMiniValue LuaMiniPrimary(LuaMiniParser *parser) {
+  LuaMiniValue value;
+  value = LuaMiniPrimaryBase(parser);
+  while (TRUE) {
+    LuaMiniValue index_value;
+    LuaMiniSkip(parser);
+    if (parser->source[parser->position] != '[') return value;
+    parser->position++;
+    index_value = LuaMiniOr(parser);
+    LuaMiniSkip(parser);
+    if (parser->source[parser->position] != ']') throw(2);
+    parser->position++;
+    value = LuaMiniIndexGet(parser, value, index_value);
+  }
 }
 
 LuaMiniValue LuaMiniTerm(LuaMiniParser *parser) {
@@ -733,6 +888,7 @@ LuaMiniValue LuaMiniEvalWithRegistryValue(U8 *source, LuaMiniRegistry *registry)
   parser.binding_count = 0;
   parser.global_count = 0;
   parser.function_count = 0;
+  parser.table_count = 0;
   parser.call_depth = 0;
   parser.registry = registry;
   parser.skipping = FALSE;
@@ -979,6 +1135,27 @@ U0 LuaMiniStatement(LuaMiniParser *parser) {
       if (local) throw(9);
       parser->position = start;
       value = LuaMiniOr(parser);
+    } else if (parser->source[parser->position] == '[') {
+      /* Indexed assignment: t[i] = v, or a chain t[i][j] = v, where every
+         `[...]` but the last is a read (descending into nested tables)
+         and the last is the write target. */
+      LuaMiniValue base;
+      LuaMiniValue index_value;
+      if (local) throw(9);
+      base = LuaMiniLookup(parser, name);
+      while (TRUE) {
+        parser->position++;
+        index_value = LuaMiniOr(parser);
+        LuaMiniSkip(parser);
+        if (parser->source[parser->position] != ']') throw(2);
+        parser->position++;
+        LuaMiniSkip(parser);
+        if (parser->source[parser->position] != '[') break;
+        base = LuaMiniIndexGet(parser, base, index_value);
+      }
+      if (parser->source[parser->position++] != '=') throw(9);
+      value = LuaMiniOr(parser);
+      LuaMiniIndexSet(parser, base, index_value, value);
     } else {
       if (parser->source[parser->position++] != '=') throw(9);
       value = LuaMiniOr(parser);
@@ -1155,6 +1332,7 @@ LuaMiniValue LuaMiniRunWithRegistryValue(U8 *source, LuaMiniRegistry *registry) 
   parser.binding_count = 0;
   parser.global_count = 0;
   parser.function_count = 0;
+  parser.table_count = 0;
   parser.call_depth = 0;
   parser.registry = registry;
   parser.skipping = FALSE;

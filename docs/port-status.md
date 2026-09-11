@@ -266,6 +266,36 @@ A correção é comparar explicitamente com `NULL`
 (`ponteiro != NULL && ...`); um `!ponteiro` isolado, fora de `&&`, funciona
 normalmente.
 
+## Tabelas estilo array
+
+`{a, b, c}` cria uma tabela indexada a partir de 1, com `t[i]` para ler e
+escrever (`t[i] = valor`, inclusive encadeado: `t[i][j] = valor` primeiro
+lê `t[i]` e escreve na posição `j` da tabela resultante). `#t` dá o maior
+índice já escrito; ler uma posição não escrita (mas dentro da capacidade)
+dá `nil`, sem erro. `type(t)` retorna `"table"`. Tabelas comparam por
+**identidade** (mesmo slot no pool), não por conteúdo — igual ao Lua real
+(`{1} == {1}` é `false`, mas `t == t` é `true`).
+
+Como o núcleo não tem alocador de heap, cada `LuaMiniValue` do tipo tabela
+só guarda um índice inteiro (`table_index`) para um slot num pool fixo
+dentro do próprio `LuaMiniParser` (`LuaMiniTable tables[MINI_MAX_TABLES]`,
+cada uma com `LuaMiniValue items[MINI_TABLE_CAPACITY]`). Isso mantém
+`LuaMiniValue` pequeno e barato de copiar (importante, já que ele é
+copiado por valor o tempo todo — argumentos de função, locais, etc.) às
+custas de um limite rígido: no máximo `MINI_MAX_TABLES` (8) tabelas vivas
+por execução e `MINI_TABLE_CAPACITY` (16) elementos por tabela; passar
+desses limites lança erro (35 para o pool cheio, 34 para índice fora da
+capacidade). Não há coleta de lixo — os slots do pool nunca são liberados
+dentro de uma mesma chamada a `LuaMiniRun`/`LuaMiniEval` (cada chamada
+cria um `LuaMiniParser` novo na pilha, então o pool reinicia a cada
+`LuaMiniRun`/`LuaMiniEval`, mas não entre tabelas dentro da mesma
+execução).
+
+Limitações que continuam: só índices numéricos (sem `t.campo` nem chaves
+string), sem literal `{chave = valor}`, sem `pairs`/`ipairs`, sem
+redimensionamento além da capacidade fixa, sem closures (uma função só
+enxerga globais e seus próprios parâmetros/locais).
+
 ## Coerção número↔string
 
 `LuaMiniNum` (usada por toda operação aritmética e relacional) agora aceita
