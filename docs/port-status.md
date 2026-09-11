@@ -86,3 +86,9 @@ serão reunidas em um GC geral.
 coleta do pool. Nesta etapa, a segurança vem do ownership por referências; a
 marcação completa de todos os objetos Lua ainda será necessária para suportar
 ciclos, userdata e closures.
+
+`src/platform/templeos/lua_call.hc` adiciona closures nativas, frames
+empilháveis e chamada protegida. A closure escreve o número de resultados por
+parâmetro de saída; essa ABI evita a incompatibilidade observada no `hcc` com
+retornos de função através de ponteiros. O smoke test está em
+`tests/holyc_call.hc`.
