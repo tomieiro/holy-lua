@@ -1,6 +1,7 @@
 /* Minimal HolyC representation of Lua values and the Lua stack. */
 
 #include "lua_runtime.hc"
+#include "lua_string.hc"
 
 #define LUA_HC_NIL 0
 #define LUA_HC_BOOLEAN 1
@@ -13,7 +14,7 @@ class LuaValue {
   Bool boolean;
   I64 integer;
   F64 number;
-  U8 *string;
+  LuaString *string;
 };
 
 class LuaState {

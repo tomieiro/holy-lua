@@ -43,6 +43,11 @@ inteiras, com sondagem linear, rehash e operações de leitura/escrita. Ela é
 uma etapa de infraestrutura; ainda não cobre chaves string, metatables,
 arrays Lua ou coleta de lixo.
 
+`src/platform/templeos/lua_string.hc` adiciona strings com comprimento
+explícito, terminador NUL, hash e comparação por conteúdo. O objeto e seus
+bytes são liberados pelo mesmo `LuaRuntime`; a integração das strings como
+chaves de tabela e objetos rastreados pelo GC ainda está pendente.
+
 ## Ordem do port
 
 1. tipos e configuração (`luaconf.h`, `llimits.h`);
