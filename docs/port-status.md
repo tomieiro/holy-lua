@@ -33,6 +33,11 @@ e `cnts.jiffies`. Ele não contém neste workspace um compilador HolyC, uma
 imagem bootável ou um artefato de execução; portanto a validação final dos
 `.hc` ainda precisa ser feita dentro de uma instalação TempleOS.
 
+`src/platform/templeos/lua_state.hc` é o primeiro núcleo de estado HolyC:
+define tags básicos, `LuaValue` e uma pilha que cresce pelo allocator do
+runtime. Ainda não representa a VM completa; strings, tabelas, closures,
+frames e GC serão adicionados sobre essa base.
+
 ## Ordem do port
 
 1. tipos e configuração (`luaconf.h`, `llimits.h`);
