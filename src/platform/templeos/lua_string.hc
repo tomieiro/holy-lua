@@ -7,6 +7,7 @@ class LuaString {
   I64 length;
   U64 hash;
   I64 references;
+  LuaString *next_interned;
   U8 *data;
 };
 
@@ -27,6 +28,7 @@ LuaString *LuaStringNew(LuaRuntime *runtime, U8 *data, I64 length) {
   string->runtime = runtime;
   string->length = length;
   string->references = 1;
+  string->next_interned = NULL;
   string->data = LuaRuntimeAlloc(runtime, length + 1);
   if (!string->data) {
     LuaRuntimeFree(runtime, string(U8 *), sizeof(LuaString));
@@ -61,4 +63,56 @@ U0 LuaStringRelease(LuaString *string) {
   if (string->references > 0) return;
   LuaRuntimeFree(string->runtime, string->data, string->length + 1);
   LuaRuntimeFree(string->runtime, string(U8 *), sizeof(LuaString));
+}
+
+class LuaStringPool {
+  LuaRuntime *runtime;
+  LuaString *head;
+  I64 count;
+};
+
+U0 LuaStringPoolInit(LuaStringPool *pool, LuaRuntime *runtime) {
+  pool->runtime = runtime;
+  pool->head = NULL;
+  pool->count = 0;
+}
+
+LuaString *LuaStringIntern(LuaStringPool *pool, U8 *data, I64 length) {
+  LuaString *current;
+  LuaString *string;
+  I64 i;
+  U64 hash;
+  hash = LuaStringHash(data, length);
+  for (current = pool->head; current; current = current->next_interned) {
+    if (current->length != length || current->hash != hash) continue;
+    for (i = 0; i < length; i++)
+      if (current->data[i] != data[i]) break;
+    if (i == length) {
+      LuaStringRetain(current);
+      return current;
+    }
+  }
+  string = LuaStringNew(pool->runtime, data, length);
+  if (!string) return NULL;
+  LuaStringRetain(string); /* reference held by pool */
+  string->next_interned = pool->head;
+  pool->head = string;
+  pool->count++;
+  return string;
+}
+
+LuaString *LuaStringInternZ(LuaStringPool *pool, U8 *data) {
+  return LuaStringIntern(pool, data, StrLen(data));
+}
+
+U0 LuaStringPoolClose(LuaStringPool *pool) {
+  LuaString *current;
+  LuaString *next;
+  for (current = pool->head; current; current = next) {
+    next = current->next_interned;
+    current->next_interned = NULL;
+    LuaStringRelease(current);
+  }
+  pool->head = NULL;
+  pool->count = 0;
 }

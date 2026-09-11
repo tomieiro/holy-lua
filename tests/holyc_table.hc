@@ -5,16 +5,18 @@
 U0 main() {
   LuaRuntime runtime;
   LuaTable table;
+  LuaStringPool pool;
   LuaString *key;
   LuaValue value;
   LuaValue found;
 
   LuaRuntimeInit(&runtime);
   LuaTableInit(&table, &runtime);
+  LuaStringPoolInit(&pool, &runtime);
   LuaValueNil(&value);
   value.type = LUA_HC_INTEGER;
   value.integer = 42;
-  key = LuaStringNewZ(&runtime, "answer");
+  key = LuaStringInternZ(&pool, "answer");
   if (key == NULL) throw(1);
   if (!LuaTableSetString(&table, key, &value)) throw(1);
   LuaValueNil(&found);
@@ -23,5 +25,6 @@ U0 main() {
   LuaValueRelease(&found);
   LuaStringRelease(key);
   LuaTableClose(&table);
+  LuaStringPoolClose(&pool);
   LuaRuntimeShutdown(&runtime);
 }

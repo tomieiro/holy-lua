@@ -72,3 +72,7 @@ ambos no fechamento. O comportamento básico é exercitado em
 O interpretador só será considerado portado quando a VM e os testes
 essenciais executarem no TempleOS; os arquivos `.hc` atuais são a fronteira
 inicial, não uma implementação simulada.
+
+O pool de strings em `lua_string.hc` reaproveita strings iguais por hash e
+conteúdo, mantém uma referência própria e a libera no encerramento. A raiz do
+pool ainda precisa ser incorporada ao GC definitivo do runtime.
