@@ -1,0 +1,33 @@
+# Status do port
+
+O repositório agora separa o Lua original da integração TempleOS:
+
+- `src/lua/`: Lua 5.4.9 original, usado como referência semântica;
+- `src/platform/templeos/`: substituições de serviços do sistema;
+- `src/templeos/`: entradas executáveis em HolyC;
+- `tests/lua/`: testes Lua originais.
+
+A primeira camada de adaptação está em `src/platform/templeos/templeos_api.hc`.
+Ela concentra memória (`MAlloc`/`Free`), console (`Print`), arquivos
+(`FileRead`/`FileWrite`) e relógio do TempleOS. O núcleo deve ser ligado a
+essa interface em vez de espalhar chamadas TempleOS pelos arquivos da VM.
+
+O checkout `../templeos` fornece o código-fonte e a documentação das APIs
+HolyC, incluindo `MAlloc`, `Free`, `MemCpy`, `Print`, `FileRead`, `FileWrite`
+e `cnts.jiffies`. Ele não contém neste workspace um compilador HolyC, uma
+imagem bootável ou um artefato de execução; portanto a validação final dos
+`.hc` ainda precisa ser feita dentro de uma instalação TempleOS.
+
+## Ordem do port
+
+1. tipos e configuração (`luaconf.h`, `llimits.h`);
+2. memória (`lmem.c`);
+3. erros não-locais (`ldo.c`);
+4. console e arquivos (`lua.c`, `liolib.c`, `loslib.c`);
+5. VM, GC, parser e bibliotecas;
+6. API HolyC para extensões Lua;
+7. testes de conformidade dentro do TempleOS.
+
+O interpretador só será considerado portado quando a VM e os testes
+essenciais executarem no TempleOS; os arquivos `.hc` atuais são a fronteira
+inicial, não uma implementação simulada.
