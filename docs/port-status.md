@@ -111,3 +111,14 @@ através de ponteiros observado no `hcc`. `LuaMiniEvalWithRegistry` e
 existentes. O registro é deliberadamente pequeno e estático nesta etapa;
 argumentos múltiplos, valores Lua gerais e closures completas continuam sendo
 trabalho do port principal.
+
+`LuaMiniRun` agora executa blocos de comandos: `if ... then ... else ... end`
+aninhados, `while condição do ... end`, `for i = início, limite[, passo] do
+... end` e `return` em qualquer ponto, além de `local` opcional e das
+comparações `<`, `<=`, `>`, `>=`, `==` e `~=`. Blocos não executados são
+analisados em modo de salto, sem atribuições, chamadas nativas ou erros de
+nome/divisão. As variáveis continuam num escopo plano de oito nomes (inclusive
+a variável de controle do `for`), sem `elseif`, `break` ou valores não
+numéricos. O `hcc` v0.0.15 compara `F64` incorretamente com literais inteiros
+(`step > 0`) e tipa comparações `F64` como `F64`; o código usa `0.0` e
+desvios explícitos para contornar isso.

@@ -27,4 +27,22 @@ U0 main() {
   if (result != 12) throw(7);
   result = LuaMiniRunWithRegistry("return triple(5)", &registry);
   if (result != 15) throw(8);
+  result = LuaMiniRun("local s = 0; for i = 1, 10 do s = s + i end return s");
+  if (result != 55) throw(9);
+  result = LuaMiniRun("n = 1; while n < 100 do n = n * 2 end return n");
+  if (result != 128) throw(10);
+  result = LuaMiniRun("s = 0; for i = 10, 1, -3 do s = s + i end return s");
+  if (result != 22) throw(11);
+  result = LuaMiniRun(
+      "s = 0; for i = 1, 5 do if i >= 3 then s = s + i else s = s - 1 end end "
+      "return s");
+  if (result != 10) throw(12);
+  result = LuaMiniRun("for i = 1, 9 do if i == 4 then return i * 10 end end "
+      "return 0");
+  if (result != 40) throw(13);
+  result = LuaMiniRun("for i = 5, 1 do return 1 / 0 end return 7");
+  if (result != 7) throw(14);
+  result = LuaMiniRun("if 1 ~= 1 then return 1 end if 2 <= 2 then return 2 end "
+      "return 3");
+  if (result != 2) throw(15);
 }

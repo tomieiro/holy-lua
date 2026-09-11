@@ -1,7 +1,7 @@
 @aicp version=1 format=line-oriented
 @stack root=README.md source_of_truth=repository
 @agent purpose="navigate and modify the Lua-to-HolyC TempleOS port" rule="verify paths and commands against repository evidence"
-@handoff status="paused" owner="user/Claude" scope="continue the HolyC nucleus port after the native registry milestone" rule="read this AICP before editing; do not assume full Lua VM support"
+@handoff status="paused" owner="user/Claude" scope="continue the HolyC nucleus port after the loops milestone" rule="read this AICP before editing; do not assume full Lua VM support"
 @avoid path=build/ reason="generated artifacts; ignored by Git"
 @mod id=lua_reference path=src/lua/ role="Lua 5.4.9 reference implementation"
 @mod id=templeos_platform path=src/platform/templeos/ role="HolyC platform boundary"
@@ -12,7 +12,7 @@
 @mod id=templeos_table path=src/platform/templeos/lua_table.hc role="integer-key hash table for the HolyC Lua state"
 @mod id=templeos_gc path=src/platform/templeos/lua_gc.hc role="initial root-aware collection facade"
 @mod id=templeos_call path=src/platform/templeos/lua_call.hc role="native closures and protected call frames"
-@mod id=templeos_mini path=src/platform/templeos/lua_mini.hc role="executable numeric Lua nucleus"
+@mod id=templeos_mini path=src/platform/templeos/lua_mini.hc role="executable numeric Lua nucleus with statement blocks and loops"
 @mod id=templeos_string path=src/platform/templeos/lua_string.hc role="length-aware hashed Lua strings"
 @mod id=templeos_entry path=src/templeos/ role="TempleOS HolyC entrypoints"
 @mod id=lua_tests path=tests/lua/testes/ role="Lua reference tests"
@@ -28,6 +28,7 @@
 @inv id=holy_c_call_test command="hcc -jit tests/holyc_call.hc" claim="native closure call executes through a protected frame" evidence=tests/holyc_call.hc
 @inv id=holy_c_mini_test command="hcc -jit tests/holyc_mini.hc" claim="numeric Lua nucleus evaluates arithmetic source end to end" evidence=tests/holyc_mini.hc
 @inv id=holy_c_mini_registry_test command="hcc -jit tests/holyc_mini.hc" claim="numeric Lua nucleus invokes a registered HolyC native function" evidence=tests/holyc_mini.hc
+@inv id=holy_c_mini_loops_test command="hcc -jit tests/holyc_mini.hc" claim="numeric Lua nucleus runs while, numeric for, nested if/else, and early return" evidence=tests/holyc_mini.hc
 @inv id=holy_c_string_pool_test command="hcc -c -o build/hcc/holyc-table-test.o tests/holyc_table.hc" claim="table smoke test exercises interned string ownership" evidence=tests/holyc_table.hc
 @flow id=host_validation steps="make host -> make test"
 @flow id=templeos_preparation steps="make templeos-prepare -> compile .hc inside TempleOS"
@@ -45,10 +46,12 @@
 @contract id=holyc_gc_roots path=src/platform/templeos/lua_gc.hc claim="GC facade records state/table roots and sweeps pool-only strings without invalidating retained values" evidence=src/platform/templeos/lua_gc.hc
 @contract id=holyc_call path=src/platform/templeos/lua_call.hc claim="native closures execute through a growable frame stack and protected error boundary" evidence=src/platform/templeos/lua_call.hc
 @contract id=holyc_call_abi path=src/platform/templeos/lua_call.hc claim="native closure ABI writes result through an output I64 parameter to remain compatible with hcc function pointers" evidence=src/platform/templeos/lua_call.hc
-@contract id=holyc_mini_eval path=src/platform/templeos/lua_mini.hc claim="mini evaluator handles return, numeric literals, locals, calls to abs/sqrt/len, conditionals, parentheses, and arithmetic precedence" evidence=src/platform/templeos/lua_mini.hc
+@contract id=holyc_mini_eval path=src/platform/templeos/lua_mini.hc claim="mini evaluator handles return, numeric literals, locals, calls to abs/sqrt/len, nested if/else blocks, while and numeric for loops, comparisons < <= > >= == ~=, parentheses, and arithmetic precedence" evidence=src/platform/templeos/lua_mini.hc
+@contract id=holyc_mini_skip path=src/platform/templeos/lua_mini.hc claim="non-executed blocks are parsed in skip mode: no assignments, native calls, unknown-name or division errors" evidence=src/platform/templeos/lua_mini.hc
 @contract id=holyc_mini_registry path=src/platform/templeos/lua_mini.hc claim="registry exposes named native functions using output-parameter hcc ABI" evidence=src/platform/templeos/lua_mini.hc
 @task id=port_memory status=active next="connect LuaMemory to the HolyC Lua state implementation"
-@task id=port_state status=paused next="add loops and general values to executable Lua nucleus" note="paused for delegation to Claude; native registry milestone is implemented and validated"
+@task id=port_state status=paused next="add general values (strings, booleans, nil, tables) and block scoping to executable Lua nucleus" note="loops milestone implemented and validated with hcc -jit tests/holyc_mini.hc"
 @task id=port_strings status=active next="add garbage collection roots for interned strings and tables"
 @task id=port_gc status=active next="replace reference-counted string sweep with full object marking"
 @task id=port_runtime status=active next="port memory first, then replace non-local error handling in ldo.c"
+@risk id=hcc_f64_compare level=medium scope="src/platform/templeos/*.hc" note="hcc v0.0.15 misorders F64 against integer literals (use 0.0) and types F64 comparisons as F64 (no && with Bool, no Bool assignment)" evidence=src/platform/templeos/lua_mini.hc
