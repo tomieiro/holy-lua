@@ -4,6 +4,7 @@
 @avoid path=build/ reason="generated artifacts; ignored by Git"
 @mod id=lua_reference path=src/lua/ role="Lua 5.4.9 reference implementation"
 @mod id=templeos_platform path=src/platform/templeos/ role="HolyC platform boundary"
+@mod id=templeos_memory path=src/platform/templeos/lua_memory.hc role="Lua allocator accounting and lifecycle"
 @mod id=templeos_entry path=src/templeos/ role="TempleOS HolyC entrypoints"
 @mod id=lua_tests path=tests/lua/testes/ role="Lua reference tests"
 @mod id=docs path=docs/ role="port status and design notes"
@@ -14,5 +15,6 @@
 @flow id=templeos_preparation steps="make templeos-prepare -> compile .hc inside TempleOS"
 @resolver id=platform_boundary path=src/platform/templeos/templeos_api.hc resolves="memory,console,files,time"
 @contract id=lua_allocator path=src/lua/lmem.c claim="Lua allocator must preserve realloc semantics: size zero frees, failed growth returns NULL, and GC debt changes only after success" evidence=src/lua/lmem.c
-@task id=port_memory status=active next="connect lua_newstate allocator setup to LuaPlatformAlloc/LuaPlatformRealloc/LuaPlatformFree"
+@contract id=holyc_allocator path=src/platform/templeos/lua_memory.hc claim="HolyC allocator tracks live bytes and allocation count while preserving Lua realloc semantics" evidence=src/platform/templeos/lua_memory.hc
+@task id=port_memory status=active next="connect LuaMemory to the HolyC Lua state implementation"
 @task id=port_runtime status=active next="port memory first, then replace non-local error handling in ldo.c"

@@ -12,6 +12,11 @@ Ela concentra memória (`MAlloc`/`Free`), console (`Print`), arquivos
 (`FileRead`/`FileWrite`) e relógio do TempleOS. O núcleo deve ser ligado a
 essa interface em vez de espalhar chamadas TempleOS pelos arquivos da VM.
 
+O primeiro componente de runtime HolyC está em
+`src/platform/templeos/lua_memory.hc`. Ele encapsula alocação, realocação,
+liberação e contabilidade de bytes vivos/alocações. Ele compila com `hcc`, mas
+ainda não substitui o `frealloc` do `global_State` em `src/lua/lmem.c`.
+
 O checkout `../templeos` fornece o código-fonte e a documentação das APIs
 HolyC, incluindo `MAlloc`, `Free`, `MemCpy`, `Print`, `FileRead`, `FileWrite`
 e `cnts.jiffies`. Ele não contém neste workspace um compilador HolyC, uma
