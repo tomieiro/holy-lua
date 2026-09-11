@@ -9,6 +9,7 @@
 @mod id=templeos_runtime path=src/platform/templeos/lua_runtime.hc role="runtime lifetime owner joining memory and exceptions"
 @mod id=templeos_state path=src/platform/templeos/lua_state.hc role="initial HolyC Lua value and stack representation"
 @mod id=templeos_table path=src/platform/templeos/lua_table.hc role="integer-key hash table for the HolyC Lua state"
+@mod id=templeos_gc path=src/platform/templeos/lua_gc.hc role="initial root-aware collection facade"
 @mod id=templeos_string path=src/platform/templeos/lua_string.hc role="length-aware hashed Lua strings"
 @mod id=templeos_entry path=src/templeos/ role="TempleOS HolyC entrypoints"
 @mod id=lua_tests path=tests/lua/testes/ role="Lua reference tests"
@@ -33,7 +34,9 @@
 @contract id=holyc_string_ownership path=src/platform/templeos/lua_string.hc claim="LuaString lifetime is reference-counted and LuaValue releases string references" evidence=src/platform/templeos/lua_state.hc
 @contract id=holyc_string_pool path=src/platform/templeos/lua_string.hc claim="string pool interns equal byte sequences and holds one reference until pool close" evidence=src/platform/templeos/lua_string.hc
 @contract id=holyc_string_gc path=src/platform/templeos/lua_string.hc claim="pool sweep removes interned strings whose only remaining reference belongs to the pool" evidence=src/platform/templeos/lua_string.hc
+@contract id=holyc_gc_roots path=src/platform/templeos/lua_gc.hc claim="GC facade records state/table roots and sweeps pool-only strings without invalidating retained values" evidence=src/platform/templeos/lua_gc.hc
 @task id=port_memory status=active next="connect LuaMemory to the HolyC Lua state implementation"
 @task id=port_state status=active next="add strings, closures, call frames, and GC to LuaState"
 @task id=port_strings status=active next="add garbage collection roots for interned strings and tables"
+@task id=port_gc status=active next="replace reference-counted string sweep with full object marking"
 @task id=port_runtime status=active next="port memory first, then replace non-local error handling in ldo.c"

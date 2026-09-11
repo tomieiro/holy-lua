@@ -81,3 +81,8 @@ O pool também faz sweep de strings com apenas a referência-base do próprio
 pool. O smoke test cobre a coleta de uma string temporária e a preservação da
 string usada como chave de tabela; raízes completas de stack/tabelas ainda
 serão reunidas em um GC geral.
+
+`src/platform/templeos/lua_gc.hc` reúne as raízes de estado/tabela e expõe a
+coleta do pool. Nesta etapa, a segurança vem do ownership por referências; a
+marcação completa de todos os objetos Lua ainda será necessária para suportar
+ciclos, userdata e closures.

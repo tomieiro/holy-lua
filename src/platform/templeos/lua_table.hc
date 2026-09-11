@@ -140,7 +140,8 @@ Bool LuaTableGetInteger(LuaTable *table, I64 key, LuaValue *value) {
   slot = LuaTableHash(key, table->capacity);
   for (probes = 0; probes < table->capacity; probes++) {
     if (!table->entries[slot].used) return FALSE;
-    if (table->entries[slot].key == key) {
+    if (table->entries[slot].key_type == LUA_HC_INTEGER &&
+        table->entries[slot].key == key) {
       LuaValueAssign(value, &table->entries[slot].value);
       return TRUE;
     }
