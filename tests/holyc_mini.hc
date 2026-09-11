@@ -6,11 +6,20 @@ U0 Triple(F64 argument, F64 *result) {
   *result = argument * 3;
 }
 
+I64 g_call_count;
+U0 CountedTriple(F64 argument, F64 *result) {
+  g_call_count++;
+  *result = argument * 3;
+}
+
+U0 LuaMiniGeneralValues(LuaMiniRegistry *registry);
+
 U0 main() {
   F64 result;
   LuaMiniRegistry registry;
   LuaMiniRegistryInit(&registry);
   LuaMiniRegister(&registry, "triple", &Triple);
+  LuaMiniRegister(&registry, "countedTriple", &CountedTriple);
   result = LuaMiniEval("return 2 + 3 * (4 - 1)");
   if (result != 11) throw(1);
   result = LuaMiniEval("10 / 2 + 0.5");
@@ -95,4 +104,86 @@ U0 main() {
   result = LuaMiniRun("s = 0; for i = 1, 10 do if i == 5 then goto done end "
       "s = s + i end ::done:: return s");
   if (result != 10) throw(34);
+
+  LuaMiniGeneralValues(&registry);
+}
+
+/* General Lua values: strings, booleans, nil, concatenation, and/or,
+   comparisons as expressions, type()/print(), and bare call statements. */
+U0 LuaMiniGeneralValues(LuaMiniRegistry *registry) {
+  LuaMiniValue value;
+  F64 result;
+
+  value = LuaMiniEvalValue("\"hello\" .. \" \" .. \"world\"");
+  if (value.type != MINI_STRING) throw(35);
+  if (!LuaMiniNameEqual(value.text, "hello world")) throw(35);
+
+  value = LuaMiniEvalValue("\"x=\" .. 5");
+  if (value.type != MINI_STRING) throw(36);
+  if (!LuaMiniNameEqual(value.text, "x=5")) throw(36);
+
+  value = LuaMiniEvalValue("true");
+  if (value.type != MINI_BOOL || !value.boolean) throw(37);
+  value = LuaMiniEvalValue("false");
+  if (value.type != MINI_BOOL || value.boolean) throw(37);
+  value = LuaMiniEvalValue("nil");
+  if (value.type != MINI_NIL) throw(38);
+
+  value = LuaMiniEvalValue("1 == 1");
+  if (value.type != MINI_BOOL || !value.boolean) throw(39);
+  value = LuaMiniEvalValue("\"a\" == \"a\"");
+  if (value.type != MINI_BOOL || !value.boolean) throw(39);
+  value = LuaMiniEvalValue("\"a\" == \"b\"");
+  if (value.type != MINI_BOOL || value.boolean) throw(39);
+  value = LuaMiniEvalValue("1 == \"1\"");
+  if (value.type != MINI_BOOL || value.boolean) throw(40); /* no coercion */
+
+  value = LuaMiniEvalValue("type(5)");
+  if (!LuaMiniNameEqual(value.text, "number")) throw(41);
+  value = LuaMiniEvalValue("type(\"x\")");
+  if (!LuaMiniNameEqual(value.text, "string")) throw(41);
+  value = LuaMiniEvalValue("type(true)");
+  if (!LuaMiniNameEqual(value.text, "boolean")) throw(41);
+  value = LuaMiniEvalValue("type(nil)");
+  if (!LuaMiniNameEqual(value.text, "nil")) throw(41);
+
+  value = LuaMiniEvalValue("#\"hello\"");
+  if (value.type != MINI_NUMBER || value.number != 5) throw(42);
+
+  value = LuaMiniEvalValue("true and 5");
+  if (value.type != MINI_NUMBER || value.number != 5) throw(43);
+  value = LuaMiniEvalValue("false and 5");
+  if (value.type != MINI_BOOL || value.boolean) throw(43);
+  value = LuaMiniEvalValue("nil or 7");
+  if (value.type != MINI_NUMBER || value.number != 7) throw(44);
+  value = LuaMiniEvalValue("3 or 7");
+  if (value.type != MINI_NUMBER || value.number != 3) throw(44);
+
+  result = LuaMiniEval("(1 == 1 and 2 or 3) + 10");
+  if (result != 12) throw(45);
+  result = LuaMiniRun("x = 5; if x > 0 and x < 10 then return 1 end return 0");
+  if (result != 1) throw(46);
+  result = LuaMiniRun("n = 1 == 2 or 3 == 3; if n then return 1 end return 0");
+  if (result != 1) throw(47);
+
+  /* `and`/`or` short-circuit: the untaken side's native call must not run. */
+  g_call_count = 0;
+  value = LuaMiniRunWithRegistryValue(
+      "n = false and countedTriple(999); return n", registry);
+  if (LuaMiniTruthy(value)) throw(48);
+  if (g_call_count != 0) throw(48);
+  value = LuaMiniRunWithRegistryValue(
+      "n = true or countedTriple(999); return n", registry);
+  if (!LuaMiniTruthy(value)) throw(48);
+  if (g_call_count != 0) throw(48);
+  result = LuaMiniRunWithRegistry("return countedTriple(2)", registry);
+  if (result != 6) throw(48);
+  if (g_call_count != 1) throw(48);
+
+  result = LuaMiniRun(
+      "s = \"\"; for i = 1, 3 do s = s .. i .. \",\" end print(s) return #s");
+  if (result != 6) throw(49);
+
+  value = LuaMiniEvalValue("1 <= 1 and 2 >= 2 and 1 ~= 2");
+  if (value.type != MINI_BOOL || !value.boolean) throw(50);
 }

@@ -156,3 +156,67 @@ Descoberta durante a depuração deste milestone: a mensagem de diagnóstico
 `uncaught throw: N` do `hcc` v0.0.15 imprime o código lançado em
 **hexadecimal**, não decimal (`throw(17)` aparece como `11`). Não é um bug;
 é fácil de interpretar mal ao depurar um `throw` não capturado.
+
+## Valores gerais: nil, boolean, number, string
+
+O núcleo mínimo deixou de operar só sobre `F64`. `LuaMiniValue` é um struct
+com uma tag (`nil`/`boolean`/`number`/`string`) e um buffer de string inline
+de 63 bytes (sem alocação em heap; ainda não integrado ao `LuaString`
+referência-contada de `lua_string.hc`). `LuaMiniExpression`,
+`LuaMiniPrimary`, `LuaMiniLookup`, `LuaMiniDeclare`/`LuaMiniAssign` e o
+resultado de `return` agora carregam `LuaMiniValue`, não `F64`.
+
+Para preservar os testes existentes, a API pública `F64`
+(`LuaMiniEval`/`LuaMiniRun`/`*WithRegistry`) continua existindo: ela chama a
+nova implementação que retorna `LuaMiniValue` e converte o resultado para
+número (lançando erro 28 se não for um número). Quem precisa do valor bruto
+usa as novas `LuaMiniEvalValue`/`LuaMiniRunValue`/`*WithRegistryValue`.
+
+Novidades da linguagem cobertas:
+
+- literais `"string"` (com `\n`, `\t`, `\\`, `\"` e qualquer outro escape
+  passando literal), `true`, `false`, `nil`;
+- `..` para concatenação (mesma precedência de `+`/`-`; formata números como
+  o Lua real — sem ponto decimal quando são inteiros, até 6 casas depois);
+- `#valor` e `len(valor)` agora aceitam qualquer expressão que produza uma
+  string, não só um literal;
+- `print(valor)` e `type(valor)` como novas funções embutidas de um
+  argumento;
+- **comandos de chamada isolados**: `print(x)` sozinho numa linha agora
+  funciona como comando (antes só existia dentro de uma expressão);
+- `==`/`~=`/`<`/`<=`/`>`/`>=` viraram uma camada de expressão geral
+  (`LuaMiniComparison`), utilizável em qualquer lugar onde um valor é
+  esperado (`x = a == b`, `return a < b`), não só dentro de `if`/`while`/
+  `until`;
+- `if`/`while`/`until` agora aceitam qualquer expressão como condição
+  (truthiness: só `nil` e `false` são falsos, como no Lua real), não
+  apenas uma comparação;
+- `and`/`or` com curto-circuito real: o lado não avaliado ainda é
+  analisado (para manter a posição do parser correta) mas em modo de
+  salto, então chamadas nativas do lado descartado não executam; cada
+  operador retorna o valor do operando, não um booleano genérico
+  (`nil or 7` é `7`; `3 or 7` é `3`).
+
+Limitações que continuam: sem tabelas, sem funções definidas em Lua
+(closures), sem coerção número↔string automática em comparações
+(`1 == "1"` é `false`), sem `elseif`/`local function`, nomes ainda vivem
+num escopo plano com no máximo 16 locais e 16 globais.
+
+### Dois bugs novos do `hcc` v0.0.15 encontrados neste milestone
+
+1. **`return F();` derruba o JIT quando `F` retorna um struct grande**
+   (como `LuaMiniValue`, que carrega um array de 64 bytes). O segfault
+   acontece mesmo no caso mais simples (`LuaMiniValue F() { return G(); }`),
+   independente de a função ter parâmetros por ponteiro. A correção é
+   sempre materializar o resultado numa variável local antes de retornar:
+   `LuaMiniValue v = G(); return v;`. Todo o arquivo foi auditado e corrigido
+   para esse padrão.
+2. **`return` de um literal inteiro ou variável `I64` numa função `F64`
+   devolve 0 silenciosamente**, sem erro de compilação — o valor é
+   descartado em vez de convertido (`F64 F() { return 3; }` retorna `0.0`).
+   A correção é usar um literal float explícito (`return 3.0;`) ou um cast
+   postfixo (`return x(F64);`). Isso é mais amplo do que o bug de
+   comparação `F64` vs. literal inteiro já documentado antes.
+
+Ambos foram descobertos por bisecção manual com `hcc -jit` sobre programas
+mínimos, já que o segfault não deixa nenhuma mensagem de diagnóstico.

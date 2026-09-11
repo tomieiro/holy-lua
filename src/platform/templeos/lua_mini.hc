@@ -1,4 +1,4 @@
-/* Executable Lua nucleus: numeric expressions, statements, and loops. */
+/* Executable Lua nucleus: general values, expressions, statements, loops. */
 
 #include "lua_state.hc"
 
@@ -36,23 +36,202 @@ LuaMiniNative *LuaMiniFindNative(LuaMiniRegistry *registry, U8 *name) {
   return NULL;
 }
 
+/* A general Lua value for the mini nucleus: nil, boolean, number, or an
+   inline (heap-free) string up to 63 bytes. No tables or functions yet. */
+#define MINI_NIL 0
+#define MINI_BOOL 1
+#define MINI_NUMBER 2
+#define MINI_STRING 3
+
+class LuaMiniValue {
+  U8 type;
+  Bool boolean;
+  F64 number;
+  U8 text[64];
+};
+
+LuaMiniValue LuaMiniNil() {
+  LuaMiniValue v;
+  v.type = MINI_NIL;
+  v.boolean = FALSE;
+  v.number = 0;
+  v.text[0] = 0;
+  return v;
+}
+
+LuaMiniValue LuaMiniBoolValue(Bool boolean) {
+  LuaMiniValue v;
+  v.type = MINI_BOOL;
+  v.boolean = boolean;
+  v.number = 0;
+  v.text[0] = 0;
+  return v;
+}
+
+LuaMiniValue LuaMiniNumberValue(F64 number) {
+  LuaMiniValue v;
+  v.type = MINI_NUMBER;
+  v.boolean = FALSE;
+  v.number = number;
+  v.text[0] = 0;
+  return v;
+}
+
+LuaMiniValue LuaMiniStringValue(U8 *text, I64 length) {
+  LuaMiniValue v;
+  v.type = MINI_STRING;
+  v.boolean = FALSE;
+  v.number = 0;
+  if (length >= 64) length = 63;
+  MemCpy(v.text, text, length);
+  v.text[length] = 0;
+  return v;
+}
+
+Bool LuaMiniTruthy(LuaMiniValue value) {
+  if (value.type == MINI_NIL) return FALSE;
+  if (value.type == MINI_BOOL) return value.boolean;
+  return TRUE;
+}
+
+/* Structural equality: values of different types are never equal. */
+Bool LuaMiniValueEqual(LuaMiniValue left, LuaMiniValue right) {
+  if (left.type != right.type) return FALSE;
+  if (left.type == MINI_NUMBER) return left.number == right.number;
+  if (left.type == MINI_BOOL) return left.boolean == right.boolean;
+  if (left.type == MINI_STRING) return LuaMiniNameEqual(left.text, right.text);
+  return TRUE; /* both nil */
+}
+
+U0 LuaMiniIntToStr(I64 number, U8 *buf) {
+  U8 digits[24];
+  I64 i;
+  I64 j;
+  Bool negative;
+  i = 0;
+  negative = FALSE;
+  if (number == 0) {
+    buf[0] = '0';
+    buf[1] = 0;
+    return;
+  }
+  if (number < 0) {
+    negative = TRUE;
+    number = -number;
+  }
+  while (number > 0) {
+    digits[i++] = '0' + number % 10;
+    number /= 10;
+  }
+  j = 0;
+  if (negative) buf[j++] = '-';
+  while (i > 0) buf[j++] = digits[--i];
+  buf[j] = 0;
+}
+
+/* Formats a number the way Lua prints one: an integer value has no decimal
+   point; otherwise up to six fractional digits, trailing zeros trimmed. */
+U0 LuaMiniFormatNumber(F64 number, U8 *buf) {
+  Bool negative;
+  I64 whole;
+  F64 fraction;
+  I64 scaled;
+  I64 position;
+  negative = FALSE;
+  if (number < 0.0) negative = TRUE;
+  if (negative) number = -number;
+  whole = number(I64);
+  fraction = number - whole;
+  position = 0;
+  if (negative) buf[position++] = '-';
+  LuaMiniIntToStr(whole, buf + position);
+  while (buf[position]) position++;
+  scaled = (fraction * 1000000 + 0.5)(I64);
+  if (scaled > 0) {
+    U8 fraction_digits[24];
+    I64 length;
+    I64 padding;
+    I64 significant;
+    I64 k;
+    LuaMiniIntToStr(scaled, fraction_digits);
+    length = 0;
+    while (fraction_digits[length]) length++;
+    padding = 6 - length;
+    significant = length;
+    while (significant > 0 && fraction_digits[significant - 1] == '0')
+      significant--;
+    if (significant > 0) {
+      buf[position++] = '.';
+      for (k = 0; k < padding; k++) buf[position++] = '0';
+      for (k = 0; k < significant; k++) buf[position++] = fraction_digits[k];
+    }
+  }
+  buf[position] = 0;
+}
+
+/* Writes value's display form (as `print` and `..` would render it) into a
+   64-byte buffer. */
+U0 LuaMiniValueToBuf(LuaMiniValue value, U8 *buf) {
+  if (value.type == MINI_NIL) {
+    MemCpy(buf, "nil", 4);
+    return;
+  }
+  if (value.type == MINI_BOOL) {
+    if (value.boolean) MemCpy(buf, "true", 5);
+    else MemCpy(buf, "false", 6);
+    return;
+  }
+  if (value.type == MINI_STRING) {
+    I64 length;
+    length = 0;
+    while (value.text[length]) length++;
+    MemCpy(buf, value.text, length + 1);
+    return;
+  }
+  LuaMiniFormatNumber(value.number, buf);
+}
+
+LuaMiniValue LuaMiniConcat(LuaMiniValue left, LuaMiniValue right) {
+  U8 left_buf[64];
+  U8 right_buf[64];
+  U8 result[64];
+  I64 left_length;
+  I64 right_length;
+  LuaMiniValue value;
+  LuaMiniValueToBuf(left, left_buf);
+  LuaMiniValueToBuf(right, right_buf);
+  left_length = 0;
+  while (left_buf[left_length]) left_length++;
+  right_length = 0;
+  while (right_buf[right_length]) right_length++;
+  if (left_length > 63) left_length = 63;
+  if (left_length + right_length > 63) right_length = 63 - left_length;
+  MemCpy(result, left_buf, left_length);
+  MemCpy(result + left_length, right_buf, right_length);
+  result[left_length + right_length] = 0;
+  /* hcc's JIT crashes on `return F();` when F returns a struct this big;
+     materializing into a local first works around it. */
+  value = LuaMiniStringValue(result, left_length + right_length);
+  return value;
+}
+
 class LuaMiniParser {
   U8 *source;
   I64 position;
   I64 binding_count; /* locals form a stack; blocks pop back to a mark */
   LuaMiniRegistry *registry;
   U8 names[16][32];
-  F64 values[16];
+  LuaMiniValue values[16];
   I64 global_count;
   U8 global_names[16][32];
-  F64 global_values[16];
+  LuaMiniValue global_values[16];
   Bool skipping; /* parse without effects: dead branches, finished loops */
   Bool returned;
   Bool breaking;
   Bool jumping; /* an active goto, seeking its label */
   U8 jump_label[32];
   I64 loop_depth;
-  F64 result;
+  LuaMiniValue result;
 };
 
 U0 LuaMiniSkip(LuaMiniParser *parser) {
@@ -63,8 +242,12 @@ U0 LuaMiniSkip(LuaMiniParser *parser) {
     parser->position++;
 }
 
-F64 LuaMiniExpression(LuaMiniParser *parser);
+LuaMiniValue LuaMiniExpression(LuaMiniParser *parser);
+LuaMiniValue LuaMiniComparison(LuaMiniParser *parser);
+LuaMiniValue LuaMiniOr(LuaMiniParser *parser);
 Bool LuaMiniNameEqual(U8 *left, U8 *right);
+Bool LuaMiniWord(LuaMiniParser *parser, U8 *word);
+Bool LuaMiniPeekWord(LuaMiniParser *parser, U8 *word);
 
 Bool LuaMiniIsName(U8 ch) {
   return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_';
@@ -92,20 +275,47 @@ Bool LuaMiniNameEqual(U8 *left, U8 *right) {
   return TRUE;
 }
 
-F64 LuaMiniLookup(LuaMiniParser *parser, U8 *name) {
+/* Coerces a value to a number for arithmetic; silently 0 while skipping,
+   otherwise a type error. */
+F64 LuaMiniNum(LuaMiniParser *parser, LuaMiniValue value) {
+  /* hcc's JIT does not convert an int literal/I64 to F64 on return; use
+     0.0 and an explicit (F64) cast throughout this file. */
+  if (value.type == MINI_NUMBER) return value.number;
+  if (parser->skipping) return 0.0;
+  throw(28);
+  return 0.0;
+}
+
+/* String length for `len(...)` and `#`; silently 0 while skipping. */
+F64 LuaMiniLen(LuaMiniParser *parser, LuaMiniValue value) {
+  I64 length;
+  if (value.type != MINI_STRING) {
+    if (parser->skipping) return 0.0;
+    throw(28);
+  }
+  length = 0;
+  while (value.text[length]) length++;
+  return length(F64);
+}
+
+LuaMiniValue LuaMiniLookup(LuaMiniParser *parser, U8 *name) {
   I64 i;
+  LuaMiniValue nil;
   for (i = parser->binding_count - 1; i >= 0; i--)
     if (LuaMiniNameEqual(parser->names[i], name)) return parser->values[i];
   for (i = 0; i < parser->global_count; i++)
     if (LuaMiniNameEqual(parser->global_names[i], name))
       return parser->global_values[i];
-  if (parser->skipping) return 0;
+  /* hcc's JIT crashes on `return F();` when F returns a struct this big;
+     materializing into a local first works around it. */
+  nil = LuaMiniNil();
+  if (parser->skipping) return nil;
   throw(6);
-  return 0;
+  return nil;
 }
 
 /* Declares a new local in the current scope, shadowing outer names. */
-U0 LuaMiniDeclare(LuaMiniParser *parser, U8 *name, F64 value) {
+U0 LuaMiniDeclare(LuaMiniParser *parser, U8 *name, LuaMiniValue value) {
   if (parser->skipping) return;
   if (parser->binding_count >= 16) throw(7);
   MemCpy(parser->names[parser->binding_count], name, 32);
@@ -113,7 +323,7 @@ U0 LuaMiniDeclare(LuaMiniParser *parser, U8 *name, F64 value) {
 }
 
 /* Assigns the innermost visible local, otherwise a global. */
-U0 LuaMiniAssign(LuaMiniParser *parser, U8 *name, F64 value) {
+U0 LuaMiniAssign(LuaMiniParser *parser, U8 *name, LuaMiniValue value) {
   I64 i;
   if (parser->skipping) return;
   for (i = parser->binding_count - 1; i >= 0; i--) {
@@ -145,35 +355,60 @@ F64 LuaMiniNumber(LuaMiniParser *parser) {
   return value;
 }
 
-F64 LuaMiniStringLength(LuaMiniParser *parser) {
-  F64 length;
+/* Parses a double-quoted string literal, translating \n, \t, \\ and \";
+   any other escaped character passes through literally. */
+LuaMiniValue LuaMiniStringParse(LuaMiniParser *parser) {
+  U8 buf[64];
+  I64 length;
+  U8 ch;
+  LuaMiniValue value;
   LuaMiniSkip(parser);
   if (parser->source[parser->position] != '"') throw(10);
   parser->position++;
   length = 0;
   while (parser->source[parser->position] &&
       parser->source[parser->position] != '"') {
-    if (parser->source[parser->position] == '\\' &&
-        parser->source[parser->position + 1]) parser->position++;
+    ch = parser->source[parser->position];
+    if (ch == '\\' && parser->source[parser->position + 1]) {
+      parser->position++;
+      ch = parser->source[parser->position];
+      if (ch == 'n') ch = '\n';
+      else if (ch == 't') ch = '\t';
+    }
+    if (length < 63) buf[length++] = ch;
     parser->position++;
-    length++;
   }
   if (parser->source[parser->position] != '"') throw(11);
   parser->position++;
-  return length;
+  buf[length] = 0;
+  /* hcc's JIT crashes on `return F();` when F returns a struct this big;
+     materializing into a local first works around it. */
+  value = LuaMiniStringValue(buf, length);
+  return value;
 }
 
-F64 LuaMiniPrimary(LuaMiniParser *parser) {
-  F64 value;
+LuaMiniValue LuaMiniPrimary(LuaMiniParser *parser) {
+  LuaMiniValue value;
   U8 name[32];
   LuaMiniSkip(parser);
+  /* Below, every branch stores into `value` and falls through to a shared
+     `return value;`: hcc's JIT crashes on `return F();` when F returns a
+     struct this big, but assign-then-return works around it. */
   if (parser->source[parser->position] == '-') {
     parser->position++;
-    return -LuaMiniPrimary(parser);
+    value = LuaMiniPrimary(parser);
+    value = LuaMiniNumberValue(-LuaMiniNum(parser, value));
+    return value;
+  }
+  if (parser->source[parser->position] == '#') {
+    parser->position++;
+    value = LuaMiniPrimary(parser);
+    value = LuaMiniNumberValue(LuaMiniLen(parser, value));
+    return value;
   }
   if (parser->source[parser->position] == '(') {
     parser->position++;
-    value = LuaMiniExpression(parser);
+    value = LuaMiniOr(parser);
     LuaMiniSkip(parser);
     if (parser->source[parser->position] != ')') throw(2);
     parser->position++;
@@ -182,19 +417,56 @@ F64 LuaMiniPrimary(LuaMiniParser *parser) {
   if (LuaMiniIsName(parser->source[parser->position])) {
     LuaMiniReadName(parser, name);
     LuaMiniSkip(parser);
+    if (LuaMiniNameEqual(name, "true")) {
+      value = LuaMiniBoolValue(TRUE);
+      return value;
+    }
+    if (LuaMiniNameEqual(name, "false")) {
+      value = LuaMiniBoolValue(FALSE);
+      return value;
+    }
+    if (LuaMiniNameEqual(name, "nil")) {
+      value = LuaMiniNil();
+      return value;
+    }
     if (parser->source[parser->position] == '(') {
       parser->position++;
       if (LuaMiniNameEqual(name, "len")) {
-        value = LuaMiniStringLength(parser);
+        value = LuaMiniOr(parser);
+        value = LuaMiniNumberValue(LuaMiniLen(parser, value));
+      } else if (LuaMiniNameEqual(name, "print")) {
+        value = LuaMiniOr(parser);
+        if (!parser->skipping) {
+          U8 buf[64];
+          LuaMiniValueToBuf(value, buf);
+          "%s\n", buf;
+        }
+        value = LuaMiniNil();
+      } else if (LuaMiniNameEqual(name, "type")) {
+        value = LuaMiniOr(parser);
+        if (value.type == MINI_NIL) value = LuaMiniStringValue("nil", 3);
+        else if (value.type == MINI_BOOL)
+          value = LuaMiniStringValue("boolean", 7);
+        else if (value.type == MINI_STRING)
+          value = LuaMiniStringValue("string", 6);
+        else value = LuaMiniStringValue("number", 6);
       } else {
-        value = LuaMiniExpression(parser);
-        if (LuaMiniNameEqual(name, "abs")) value = fabs(value);
-        else if (LuaMiniNameEqual(name, "sqrt")) value = sqrt(value);
+        value = LuaMiniOr(parser);
+        if (LuaMiniNameEqual(name, "abs"))
+          value = LuaMiniNumberValue(fabs(LuaMiniNum(parser, value)));
+        else if (LuaMiniNameEqual(name, "sqrt"))
+          value = LuaMiniNumberValue(sqrt(LuaMiniNum(parser, value)));
         else {
           LuaMiniNative *native = LuaMiniFindNative(parser->registry, name);
           if (!native) {
             if (!parser->skipping) throw(12);
-          } else if (!parser->skipping) native->function(value, &value);
+          } else if (!parser->skipping) {
+            F64 argument;
+            F64 native_result;
+            argument = LuaMiniNum(parser, value);
+            native->function(argument, &native_result);
+            value = LuaMiniNumberValue(native_result);
+          }
         }
       }
       LuaMiniSkip(parser);
@@ -202,24 +474,31 @@ F64 LuaMiniPrimary(LuaMiniParser *parser) {
       parser->position++;
       return value;
     }
-    return LuaMiniLookup(parser, name);
+    value = LuaMiniLookup(parser, name);
+    return value;
   }
-  if (parser->source[parser->position] == '"')
-    return LuaMiniStringLength(parser);
-  return LuaMiniNumber(parser);
+  if (parser->source[parser->position] == '"') {
+    value = LuaMiniStringParse(parser);
+    return value;
+  }
+  value = LuaMiniNumberValue(LuaMiniNumber(parser));
+  return value;
 }
 
-F64 LuaMiniTerm(LuaMiniParser *parser) {
+LuaMiniValue LuaMiniTerm(LuaMiniParser *parser) {
+  LuaMiniValue left_value;
   F64 left;
   F64 right;
   U8 operation;
-  left = LuaMiniPrimary(parser);
+  left_value = LuaMiniPrimary(parser);
   while (TRUE) {
     LuaMiniSkip(parser);
     operation = parser->source[parser->position];
-    if (operation != '*' && operation != '/' && operation != '%') return left;
+    if (operation != '*' && operation != '/' && operation != '%')
+      return left_value;
     parser->position++;
-    right = LuaMiniPrimary(parser);
+    left = LuaMiniNum(parser, left_value);
+    right = LuaMiniNum(parser, LuaMiniPrimary(parser));
     if (operation == '/') {
       if (right == 0.0) {
         if (!parser->skipping) throw(3);
@@ -231,48 +510,131 @@ F64 LuaMiniTerm(LuaMiniParser *parser) {
         if (!parser->skipping) throw(3);
       } else left -= floor(left / right) * right;
     }
+    left_value = LuaMiniNumberValue(left);
   }
 }
 
-F64 LuaMiniExpression(LuaMiniParser *parser) {
+LuaMiniValue LuaMiniExpression(LuaMiniParser *parser) {
+  LuaMiniValue left_value;
+  LuaMiniValue right_value;
   F64 left;
   F64 right;
   U8 operation;
-  left = LuaMiniTerm(parser);
+  left_value = LuaMiniTerm(parser);
   while (TRUE) {
     LuaMiniSkip(parser);
+    if (parser->source[parser->position] == '.' &&
+        parser->source[parser->position + 1] == '.') {
+      parser->position += 2;
+      right_value = LuaMiniTerm(parser);
+      left_value = LuaMiniConcat(left_value, right_value);
+      continue;
+    }
     operation = parser->source[parser->position];
-    if (operation != '+' && operation != '-') return left;
+    if (operation != '+' && operation != '-') return left_value;
     parser->position++;
-    right = LuaMiniTerm(parser);
+    left = LuaMiniNum(parser, left_value);
+    right = LuaMiniNum(parser, LuaMiniTerm(parser));
     if (operation == '-') left -= right;
     else left += right;
+    left_value = LuaMiniNumberValue(left);
   }
 }
 
-Bool LuaMiniCondition(LuaMiniParser *parser) {
+/* An expression, optionally followed by one comparison (<, <=, >, >=, ==,
+   ~=), producing a value: a comparison yields a boolean, anything else
+   passes through unchanged. This is the general "expression" grammar level
+   used everywhere a value is expected; LuaMiniExpression (arithmetic and
+   concatenation) sits just below it. */
+LuaMiniValue LuaMiniComparison(LuaMiniParser *parser) {
+  LuaMiniValue left_value;
+  LuaMiniValue right_value;
+  LuaMiniValue result;
   F64 left;
   F64 right;
   U8 operation;
   Bool or_equal;
-  left = LuaMiniExpression(parser);
+  left_value = LuaMiniExpression(parser);
   LuaMiniSkip(parser);
-  operation = parser->source[parser->position++];
+  operation = parser->source[parser->position];
+  if (operation != '<' && operation != '>' && operation != '=' &&
+      operation != '~')
+    return left_value;
+  /* A bare '=' or '~' (not doubled) belongs to something else (assignment,
+     an unsupported operator) and is not part of this expression. */
+  if ((operation == '=' || operation == '~') &&
+      parser->source[parser->position + 1] != '=')
+    return left_value;
+  parser->position++;
   or_equal = parser->source[parser->position] == '=';
   if (or_equal) parser->position++;
-  right = LuaMiniExpression(parser);
+  right_value = LuaMiniExpression(parser);
+  if (operation == '=' || operation == '~') {
+    Bool equal;
+    equal = LuaMiniValueEqual(left_value, right_value);
+    if (operation == '~') equal = !equal;
+    result = LuaMiniBoolValue(equal);
+    return result;
+  }
+  left = LuaMiniNum(parser, left_value);
+  right = LuaMiniNum(parser, right_value);
   /* hcc types F64 comparisons as F64, so they cannot mix with && or be
      stored in Bool; branch on them instead. */
   if (left == right) {
-    if (operation == '~' || operation == '=') return operation == '=';
-    if (operation == '<' || operation == '>') return or_equal;
+    result = LuaMiniBoolValue(or_equal);
+    return result;
   }
-  if (operation == '>') { if (left > right) return TRUE; return FALSE; }
-  if (operation == '<') { if (left < right) return TRUE; return FALSE; }
-  if (operation == '=') return FALSE;
-  if (operation == '~' && or_equal) return TRUE;
-  throw(13);
-  return FALSE;
+  if (operation == '>') {
+    if (left > right) result = LuaMiniBoolValue(TRUE);
+    else result = LuaMiniBoolValue(FALSE);
+    return result;
+  }
+  if (left < right) result = LuaMiniBoolValue(TRUE);
+  else result = LuaMiniBoolValue(FALSE);
+  return result;
+}
+
+/* `and`/`or`, above comparison: short-circuiting, and each yields an
+   operand's value rather than a plain boolean, matching real Lua. The
+   untaken operand is still parsed (to advance position) but with effects
+   suppressed via parser->skipping, the same mechanism dead branches use. */
+LuaMiniValue LuaMiniAnd(LuaMiniParser *parser) {
+  LuaMiniValue left;
+  LuaMiniValue right;
+  Bool saved;
+  left = LuaMiniComparison(parser);
+  while (LuaMiniPeekWord(parser, "and")) {
+    LuaMiniWord(parser, "and");
+    saved = parser->skipping;
+    if (!LuaMiniTruthy(left)) parser->skipping = TRUE;
+    right = LuaMiniComparison(parser);
+    parser->skipping = saved;
+    if (LuaMiniTruthy(left)) left = right;
+  }
+  return left;
+}
+
+LuaMiniValue LuaMiniOr(LuaMiniParser *parser) {
+  LuaMiniValue left;
+  LuaMiniValue right;
+  Bool saved;
+  left = LuaMiniAnd(parser);
+  while (LuaMiniPeekWord(parser, "or")) {
+    LuaMiniWord(parser, "or");
+    saved = parser->skipping;
+    if (LuaMiniTruthy(left)) parser->skipping = TRUE;
+    right = LuaMiniAnd(parser);
+    parser->skipping = saved;
+    if (!LuaMiniTruthy(left)) left = right;
+  }
+  return left;
+}
+
+/* if/while/until conditions accept any expression's truthiness (nil and
+   false are the only falsy values, matching real Lua), not just a bare
+   comparison. */
+Bool LuaMiniCondition(LuaMiniParser *parser) {
+  return LuaMiniTruthy(LuaMiniOr(parser));
 }
 
 Bool LuaMiniWord(LuaMiniParser *parser, U8 *word) {
@@ -281,9 +643,28 @@ Bool LuaMiniWord(LuaMiniParser *parser, U8 *word) {
   return LuaMiniNameEqual(actual, word);
 }
 
-F64 LuaMiniEvalWithRegistry(U8 *source, LuaMiniRegistry *registry) {
+Bool LuaMiniPeekWord(LuaMiniParser *parser, U8 *word) {
+  U8 actual[32];
+  I64 saved;
+  LuaMiniSkip(parser);
+  if (!LuaMiniIsName(parser->source[parser->position])) return FALSE;
+  saved = parser->position;
+  LuaMiniReadName(parser, actual);
+  parser->position = saved;
+  return LuaMiniNameEqual(actual, word);
+}
+
+/* Coerces the final expression result to a number; used by the F64-typed
+   convenience API, which predates general values. */
+F64 LuaMiniValueAsNumber(LuaMiniValue value) {
+  if (value.type == MINI_NUMBER) return value.number;
+  throw(28);
+  return 0.0;
+}
+
+LuaMiniValue LuaMiniEvalWithRegistryValue(U8 *source, LuaMiniRegistry *registry) {
   LuaMiniParser parser;
-  F64 result;
+  LuaMiniValue result;
   parser.source = source;
   parser.position = 0;
   parser.binding_count = 0;
@@ -299,27 +680,26 @@ F64 LuaMiniEvalWithRegistry(U8 *source, LuaMiniRegistry *registry) {
       source[parser.position + 2] == 't' && source[parser.position + 3] == 'u' &&
       source[parser.position + 4] == 'r' && source[parser.position + 5] == 'n')
     parser.position += 6;
-  result = LuaMiniExpression(&parser);
+  result = LuaMiniOr(&parser);
   LuaMiniSkip(&parser);
   if (source[parser.position] != 0) throw(4);
   return result;
 }
 
-F64 LuaMiniEval(U8 *source) {
-  F64 result;
-  result = LuaMiniEvalWithRegistry(source, NULL);
-  return result;
+F64 LuaMiniEvalWithRegistry(U8 *source, LuaMiniRegistry *registry) {
+  return LuaMiniValueAsNumber(LuaMiniEvalWithRegistryValue(source, registry));
 }
 
-Bool LuaMiniPeekWord(LuaMiniParser *parser, U8 *word) {
-  U8 actual[32];
-  I64 saved;
-  LuaMiniSkip(parser);
-  if (!LuaMiniIsName(parser->source[parser->position])) return FALSE;
-  saved = parser->position;
-  LuaMiniReadName(parser, actual);
-  parser->position = saved;
-  return LuaMiniNameEqual(actual, word);
+F64 LuaMiniEval(U8 *source) {
+  return LuaMiniEvalWithRegistry(source, NULL);
+}
+
+LuaMiniValue LuaMiniEvalValue(U8 *source) {
+  /* hcc's JIT crashes on `return F();` when F returns a struct this big;
+     materializing into a local first works around it. */
+  LuaMiniValue value;
+  value = LuaMiniEvalWithRegistryValue(source, NULL);
+  return value;
 }
 
 U0 LuaMiniExpect(LuaMiniParser *parser, U8 *word, I64 error) {
@@ -415,15 +795,15 @@ U0 LuaMiniFor(LuaMiniParser *parser) {
   LuaMiniReadName(parser, name);
   LuaMiniSkip(parser);
   if (parser->source[parser->position++] != '=') throw(9);
-  value = LuaMiniExpression(parser);
+  value = LuaMiniNum(parser, LuaMiniExpression(parser));
   LuaMiniSkip(parser);
   if (parser->source[parser->position++] != ',') throw(22);
-  limit = LuaMiniExpression(parser);
+  limit = LuaMiniNum(parser, LuaMiniExpression(parser));
   step = 1;
   LuaMiniSkip(parser);
   if (parser->source[parser->position] == ',') {
     parser->position++;
-    step = LuaMiniExpression(parser);
+    step = LuaMiniNum(parser, LuaMiniExpression(parser));
   }
   if (step == 0.0) {
     if (!parser->skipping) throw(23);
@@ -438,7 +818,7 @@ U0 LuaMiniFor(LuaMiniParser *parser) {
     else if (value < limit) running = FALSE;
     if (parser->skipping) running = FALSE;
     mark = parser->binding_count;
-    if (running) LuaMiniDeclare(parser, name, value);
+    if (running) LuaMiniDeclare(parser, name, LuaMiniNumberValue(value));
     LuaMiniLoopBody(parser, running);
     parser->binding_count = mark;
     if (parser->jumping) return;
@@ -481,10 +861,10 @@ U0 LuaMiniRepeat(LuaMiniParser *parser) {
 
 U0 LuaMiniStatement(LuaMiniParser *parser) {
   U8 name[32];
-  F64 value;
+  LuaMiniValue value;
   if (LuaMiniPeekWord(parser, "return")) {
     LuaMiniWord(parser, "return");
-    value = LuaMiniExpression(parser);
+    value = LuaMiniOr(parser);
     if (!parser->skipping) {
       parser->result = value;
       parser->returned = TRUE;
@@ -519,14 +899,24 @@ U0 LuaMiniStatement(LuaMiniParser *parser) {
     }
   } else {
     Bool local;
+    I64 start;
     local = LuaMiniPeekWord(parser, "local");
     if (local) LuaMiniWord(parser, "local");
+    start = parser->position;
     LuaMiniReadName(parser, name);
     LuaMiniSkip(parser);
-    if (parser->source[parser->position++] != '=') throw(9);
-    value = LuaMiniExpression(parser);
-    if (local) LuaMiniDeclare(parser, name, value);
-    else LuaMiniAssign(parser, name, value);
+    if (parser->source[parser->position] == '(') {
+      /* A bare call used as a statement, e.g. `print(x)`: rewind and
+         re-parse it as an expression, discarding the result. */
+      if (local) throw(9);
+      parser->position = start;
+      value = LuaMiniOr(parser);
+    } else {
+      if (parser->source[parser->position++] != '=') throw(9);
+      value = LuaMiniOr(parser);
+      if (local) LuaMiniDeclare(parser, name, value);
+      else LuaMiniAssign(parser, name, value);
+    }
   }
   LuaMiniSkip(parser);
   if (parser->source[parser->position] == ';') parser->position++;
@@ -586,7 +976,7 @@ U0 LuaMiniBlock(LuaMiniParser *parser) {
   }
 }
 
-F64 LuaMiniRunWithRegistry(U8 *source, LuaMiniRegistry *registry) {
+LuaMiniValue LuaMiniRunWithRegistryValue(U8 *source, LuaMiniRegistry *registry) {
   LuaMiniParser parser;
   parser.source = source;
   parser.position = 0;
@@ -598,7 +988,7 @@ F64 LuaMiniRunWithRegistry(U8 *source, LuaMiniRegistry *registry) {
   parser.breaking = FALSE;
   parser.jumping = FALSE;
   parser.loop_depth = 0;
-  parser.result = 0;
+  parser.result = LuaMiniNil();
   LuaMiniBlock(&parser);
   if (parser.jumping) throw(27);
   if (parser.source[parser.position] != 0) throw(4);
@@ -606,8 +996,18 @@ F64 LuaMiniRunWithRegistry(U8 *source, LuaMiniRegistry *registry) {
   return parser.result;
 }
 
+F64 LuaMiniRunWithRegistry(U8 *source, LuaMiniRegistry *registry) {
+  return LuaMiniValueAsNumber(LuaMiniRunWithRegistryValue(source, registry));
+}
+
 F64 LuaMiniRun(U8 *source) {
-  F64 result;
-  result = LuaMiniRunWithRegistry(source, NULL);
-  return result;
+  return LuaMiniRunWithRegistry(source, NULL);
+}
+
+LuaMiniValue LuaMiniRunValue(U8 *source) {
+  /* hcc's JIT crashes on `return F();` when F returns a struct this big;
+     materializing into a local first works around it. */
+  LuaMiniValue value;
+  value = LuaMiniRunWithRegistryValue(source, NULL);
+  return value;
 }
