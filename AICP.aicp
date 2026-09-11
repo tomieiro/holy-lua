@@ -13,4 +13,6 @@
 @flow id=host_validation steps="make host -> make test"
 @flow id=templeos_preparation steps="make templeos-prepare -> compile .hc inside TempleOS"
 @resolver id=platform_boundary path=src/platform/templeos/templeos_api.hc resolves="memory,console,files,time"
-@task id=port_runtime status=active next="connect lmem.c and ldo.c to the HolyC platform boundary"
+@contract id=lua_allocator path=src/lua/lmem.c claim="Lua allocator must preserve realloc semantics: size zero frees, failed growth returns NULL, and GC debt changes only after success" evidence=src/lua/lmem.c
+@task id=port_memory status=active next="connect lua_newstate allocator setup to LuaPlatformAlloc/LuaPlatformRealloc/LuaPlatformFree"
+@task id=port_runtime status=active next="port memory first, then replace non-local error handling in ldo.c"

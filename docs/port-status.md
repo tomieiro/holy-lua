@@ -21,7 +21,8 @@ imagem bootável ou um artefato de execução; portanto a validação final dos
 ## Ordem do port
 
 1. tipos e configuração (`luaconf.h`, `llimits.h`);
-2. memória (`lmem.c`);
+2. memória (`lmem.c`): a API HolyC já existe, mas ainda precisa ser ligada
+   ao `frealloc` usado pelo `global_State`;
 3. erros não-locais (`ldo.c`);
 4. console e arquivos (`lua.c`, `liolib.c`, `loslib.c`);
 5. VM, GC, parser e bibliotecas;
