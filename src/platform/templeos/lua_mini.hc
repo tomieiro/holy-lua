@@ -39,10 +39,13 @@ LuaMiniNative *LuaMiniFindNative(LuaMiniRegistry *registry, U8 *name) {
 class LuaMiniParser {
   U8 *source;
   I64 position;
-  I64 binding_count;
+  I64 binding_count; /* locals form a stack; blocks pop back to a mark */
   LuaMiniRegistry *registry;
-  U8 names[8][32];
-  F64 values[8];
+  U8 names[16][32];
+  F64 values[16];
+  I64 global_count;
+  U8 global_names[16][32];
+  F64 global_values[16];
   Bool skipping; /* parse without effects: dead branches, finished loops */
   Bool returned;
   Bool breaking;
@@ -89,25 +92,43 @@ Bool LuaMiniNameEqual(U8 *left, U8 *right) {
 
 F64 LuaMiniLookup(LuaMiniParser *parser, U8 *name) {
   I64 i;
-  for (i = 0; i < parser->binding_count; i++)
+  for (i = parser->binding_count - 1; i >= 0; i--)
     if (LuaMiniNameEqual(parser->names[i], name)) return parser->values[i];
+  for (i = 0; i < parser->global_count; i++)
+    if (LuaMiniNameEqual(parser->global_names[i], name))
+      return parser->global_values[i];
   if (parser->skipping) return 0;
   throw(6);
   return 0;
 }
 
+/* Declares a new local in the current scope, shadowing outer names. */
+U0 LuaMiniDeclare(LuaMiniParser *parser, U8 *name, F64 value) {
+  if (parser->skipping) return;
+  if (parser->binding_count >= 16) throw(7);
+  MemCpy(parser->names[parser->binding_count], name, 32);
+  parser->values[parser->binding_count++] = value;
+}
+
+/* Assigns the innermost visible local, otherwise a global. */
 U0 LuaMiniAssign(LuaMiniParser *parser, U8 *name, F64 value) {
   I64 i;
   if (parser->skipping) return;
-  for (i = 0; i < parser->binding_count; i++) {
+  for (i = parser->binding_count - 1; i >= 0; i--) {
     if (LuaMiniNameEqual(parser->names[i], name)) {
       parser->values[i] = value;
       return;
     }
   }
-  if (parser->binding_count >= 8) throw(7);
-  MemCpy(parser->names[parser->binding_count], name, 32);
-  parser->values[parser->binding_count++] = value;
+  for (i = 0; i < parser->global_count; i++) {
+    if (LuaMiniNameEqual(parser->global_names[i], name)) {
+      parser->global_values[i] = value;
+      return;
+    }
+  }
+  if (parser->global_count >= 16) throw(7);
+  MemCpy(parser->global_names[parser->global_count], name, 32);
+  parser->global_values[parser->global_count++] = value;
 }
 
 F64 LuaMiniNumber(LuaMiniParser *parser) {
@@ -258,6 +279,7 @@ F64 LuaMiniEvalWithRegistry(U8 *source, LuaMiniRegistry *registry) {
   parser.source = source;
   parser.position = 0;
   parser.binding_count = 0;
+  parser.global_count = 0;
   parser.registry = registry;
   parser.skipping = FALSE;
   parser.returned = FALSE;
@@ -302,9 +324,12 @@ U0 LuaMiniBlock(LuaMiniParser *parser);
    keeps the rest of the program in skip mode. */
 U0 LuaMiniSubBlock(LuaMiniParser *parser, Bool execute) {
   Bool saved;
+  I64 mark;
   saved = parser->skipping;
+  mark = parser->binding_count;
   parser->skipping = saved || !execute;
   LuaMiniBlock(parser);
+  parser->binding_count = mark;
   parser->skipping = saved || parser->returned || parser->breaking;
 }
 
@@ -367,13 +392,14 @@ U0 LuaMiniWhile(LuaMiniParser *parser) {
   }
 }
 
-/* Numeric for: the control variable lives in the flat binding table. */
+/* Numeric for: each iteration gets a fresh local control variable. */
 U0 LuaMiniFor(LuaMiniParser *parser) {
   U8 name[32];
   F64 value;
   F64 limit;
   F64 step;
   I64 body;
+  I64 mark;
   Bool running;
   LuaMiniReadName(parser, name);
   LuaMiniSkip(parser);
@@ -400,8 +426,10 @@ U0 LuaMiniFor(LuaMiniParser *parser) {
     if (step > 0.0) { if (value > limit) running = FALSE; }
     else if (value < limit) running = FALSE;
     if (parser->skipping) running = FALSE;
-    if (running) LuaMiniAssign(parser, name, value);
+    mark = parser->binding_count;
+    if (running) LuaMiniDeclare(parser, name, value);
     LuaMiniLoopBody(parser, running);
+    parser->binding_count = mark;
     if (!running || parser->returned) return;
     if (parser->breaking) {
       LuaMiniEndBreak(parser);
@@ -439,12 +467,15 @@ U0 LuaMiniStatement(LuaMiniParser *parser) {
     LuaMiniWord(parser, "for");
     LuaMiniFor(parser);
   } else {
-    if (LuaMiniPeekWord(parser, "local")) LuaMiniWord(parser, "local");
+    Bool local;
+    local = LuaMiniPeekWord(parser, "local");
+    if (local) LuaMiniWord(parser, "local");
     LuaMiniReadName(parser, name);
     LuaMiniSkip(parser);
     if (parser->source[parser->position++] != '=') throw(9);
     value = LuaMiniExpression(parser);
-    LuaMiniAssign(parser, name, value);
+    if (local) LuaMiniDeclare(parser, name, value);
+    else LuaMiniAssign(parser, name, value);
   }
   LuaMiniSkip(parser);
   if (parser->source[parser->position] == ';') parser->position++;
@@ -467,6 +498,7 @@ F64 LuaMiniRunWithRegistry(U8 *source, LuaMiniRegistry *registry) {
   parser.source = source;
   parser.position = 0;
   parser.binding_count = 0;
+  parser.global_count = 0;
   parser.registry = registry;
   parser.skipping = FALSE;
   parser.returned = FALSE;

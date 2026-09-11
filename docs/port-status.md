@@ -125,3 +125,9 @@ desvios explícitos para contornar isso.
 O núcleo também aceita `elseif` encadeado e `break` dentro de `while`/`for`.
 Condições de `elseif` posteriores a um ramo já escolhido são analisadas em modo
 de salto. `break` fora de laço lança o erro 24.
+
+Variáveis agora seguem o escopo léxico de Lua: `local` cria uma ligação no
+bloco atual (podendo sombrear nomes externos) e é descartada ao fim do bloco;
+atribuição sem `local` altera o local visível mais interno ou, na ausência
+dele, uma global. A variável de controle do `for` é local ao corpo do laço.
+Há até 16 locais vivos e 16 globais.

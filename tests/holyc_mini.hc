@@ -60,4 +60,14 @@ U0 main() {
   result = LuaMiniRun("t = 0; for i = 1, 3 do for j = 1, 10 do if j > i then "
       "break end t = t + 1 end end return t");
   if (result != 6) throw(20);
+  result = LuaMiniRun("local x = 1; if x > 0 then local x = 5; x = x + 1 end "
+      "return x");
+  if (result != 1) throw(21);
+  result = LuaMiniRun("x = 1; if x > 0 then x = 5 end return x");
+  if (result != 5) throw(22);
+  result = LuaMiniRun("i = 100; for i = 1, 3 do end return i");
+  if (result != 100) throw(23);
+  result = LuaMiniRun("s = 0; for i = 1, 20 do local d = i * 2; s = s + d end "
+      "return s");
+  if (result != 420) throw(24);
 }
