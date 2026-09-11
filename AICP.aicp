@@ -1,0 +1,16 @@
+@aicp version=1 format=line-oriented
+@stack root=README.md source_of_truth=repository
+@agent purpose="navigate and modify the Lua-to-HolyC TempleOS port" rule="verify paths and commands against repository evidence"
+@avoid path=build/ reason="generated artifacts; ignored by Git"
+@mod id=lua_reference path=src/lua/ role="Lua 5.4.9 reference implementation"
+@mod id=templeos_platform path=src/platform/templeos/ role="HolyC platform boundary"
+@mod id=templeos_entry path=src/templeos/ role="TempleOS HolyC entrypoints"
+@mod id=lua_tests path=tests/lua/testes/ role="Lua reference tests"
+@mod id=docs path=docs/ role="port status and design notes"
+@inv id=host_build command="make host" claim="host interpreter builds from src/lua/" evidence=Makefile
+@inv id=holy_c_layer command="hcc -c -o build/hcc/lua-platform.o src/platform/templeos/templeos_api.hc" claim="platform layer compiles with hcc when installed" evidence=src/platform/templeos/templeos_api.hc
+@inv id=holy_c_entry command="hcc -c -o build/hcc/lua-entry.o src/templeos/lua.hc" claim="TempleOS entry compiles with hcc when installed" evidence=src/templeos/lua.hc
+@flow id=host_validation steps="make host -> make test"
+@flow id=templeos_preparation steps="make templeos-prepare -> compile .hc inside TempleOS"
+@resolver id=platform_boundary path=src/platform/templeos/templeos_api.hc resolves="memory,console,files,time"
+@task id=port_runtime status=active next="connect lmem.c and ldo.c to the HolyC platform boundary"

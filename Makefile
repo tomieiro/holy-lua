@@ -3,7 +3,7 @@
 
 CC ?= gcc
 CFLAGS ?= -O2 -Wall -Wextra -std=c99
-CPPFLAGS += -Isrc/lua
+CPPFLAGS += -Isrc/lua -DLUA_USE_LINUX -DLUA_USE_READLINE
 BUILD := build/host
 BIN := $(BUILD)/lua
 
@@ -17,14 +17,15 @@ host: $(BIN)
 
 $(BIN): $(BUILD)/lua.o $(OBJ)
 	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -o $@ $^ -lm -ldl -lreadline
+	$(CC) $(CFLAGS) -Wl,-E -o $@ $^ -lm -ldl -lreadline
 
 $(BUILD)/%.o: src/lua/%.c
 	@mkdir -p $(@D)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 test: host
-	$(BIN) tests/lua/testes/main.lua
+	$(MAKE) -C tests/lua/testes/libs LUA_DIR=../../../../src/lua
+	cd tests/lua/testes && ../../../$(BIN) main.lua
 
 templeos-prepare:
 	@mkdir -p build/templeos

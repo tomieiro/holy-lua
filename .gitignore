@@ -10,6 +10,7 @@ testes/time.txt
 testes/time-debug.txt
 
 testes/libs/all
+tests/lua/testes/libs/all
 
 temp
 /lua
