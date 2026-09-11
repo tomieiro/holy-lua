@@ -94,7 +94,7 @@ retornos de função através de ponteiros. O smoke test está em
 `tests/holyc_call.hc`.
 
 O primeiro núcleo executável está em `src/platform/templeos/lua_mini.hc`: ele
-avalia literais numéricos, `return`, parênteses e `+ - * /` com precedência,
+avalia literais numéricos, variáveis locais, atribuições, `return`, parênteses e `+ - * /` com precedência,
 incluindo erros protegidos por `throw`. `tests/holyc_mini.hc` executa esse
 fluxo ponta a ponta com `hcc -jit`. Ainda não é a VM Lua completa; é o núcleo
 funcional sobre o qual serão adicionados variáveis, chamadas e bytecode.
