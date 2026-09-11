@@ -294,12 +294,28 @@ Bool LuaMiniNameEqual(U8 *left, U8 *right) {
   return TRUE;
 }
 
-/* Coerces a value to a number for arithmetic; silently 0 while skipping,
-   otherwise a type error. */
+/* Coerces a value to a number for arithmetic and comparisons, the way real
+   Lua coerces a numeric string in an arithmetic context: the whole string,
+   ignoring surrounding spaces, must be a valid number. Silently 0 while
+   skipping; otherwise a type error for anything else (including a
+   non-numeric string). Unlike real Lua, this coercion also applies to
+   relational operators (< <= > >=), not just to arithmetic. */
 F64 LuaMiniNum(LuaMiniParser *parser, LuaMiniValue value) {
   /* hcc's JIT does not convert an int literal/I64 to F64 on return; use
      0.0 and an explicit (F64) cast throughout this file. */
   if (value.type == MINI_NUMBER) return value.number;
+  if (value.type == MINI_STRING) {
+    U8 *start;
+    U8 *end;
+    F64 number;
+    start = value.text;
+    while (*start == ' ' || *start == '\t') start++;
+    number = strtod(start, &end);
+    if (end != start) {
+      while (*end == ' ' || *end == '\t') end++;
+      if (*end == 0) return number;
+    }
+  }
   if (parser->skipping) return 0.0;
   throw(28);
   return 0.0;

@@ -265,3 +265,14 @@ encadeado com mais termos `&&` (`"cannot be applied to a pointer type"`).
 A correção é comparar explicitamente com `NULL`
 (`ponteiro != NULL && ...`); um `!ponteiro` isolado, fora de `&&`, funciona
 normalmente.
+
+## Coerção número↔string
+
+`LuaMiniNum` (usada por toda operação aritmética e relacional) agora aceita
+uma string totalmente numérica (ignorando espaços nas bordas) como se fosse
+um número, igual à coerção aritmética do Lua real: `"10" + 1` é `11`,
+`"  3.5  " * 2` é `7`. Uma string não-numérica continua sendo erro de tipo
+(28). Diferente do Lua real, essa coerção também vale para `< <= > >=` (no
+Lua de verdade, comparar número com string é sempre erro, mesmo se a string
+for numérica); `==`/`~=` nunca coagem, igualdade continua estrutural por
+tipo.

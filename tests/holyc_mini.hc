@@ -14,6 +14,7 @@ U0 CountedTriple(F64 argument, F64 *result) {
 
 U0 LuaMiniGeneralValues(LuaMiniRegistry *registry);
 U0 LuaMiniFunctionTests();
+U0 LuaMiniCoercionTests();
 
 U0 main() {
   F64 result;
@@ -241,5 +242,35 @@ U0 LuaMiniFunctionTests() {
       caught = TRUE;
     }
     if (!caught) throw(59);
+  }
+
+  LuaMiniCoercionTests();
+}
+
+/* Arithmetic and relational operators coerce a fully-numeric string, the
+   way real Lua's arithmetic does (though real Lua does not extend this to
+   relational operators, as this nucleus does). A non-numeric string is
+   still a type error. */
+U0 LuaMiniCoercionTests() {
+  F64 result;
+
+  result = LuaMiniEval("\"10\" + 1");
+  if (result != 11) throw(60);
+  result = LuaMiniEval("\"  3.5  \" * 2");
+  if (result != 7) throw(61);
+  result = LuaMiniEval("\"10\" - \"4\"");
+  if (result != 6) throw(62);
+  result = LuaMiniRun("if \"5\" < 10 then return 1 end return 0");
+  if (result != 1) throw(63);
+
+  {
+    Bool caught;
+    caught = FALSE;
+    try {
+      LuaMiniEval("\"abc\" + 1");
+    } catch {
+      caught = TRUE;
+    }
+    if (!caught) throw(64);
   }
 }
