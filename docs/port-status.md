@@ -118,7 +118,10 @@ aninhados, `while condição do ... end`, `for i = início, limite[, passo] do
 comparações `<`, `<=`, `>`, `>=`, `==` e `~=`. Blocos não executados são
 analisados em modo de salto, sem atribuições, chamadas nativas ou erros de
 nome/divisão. As variáveis continuam num escopo plano de oito nomes (inclusive
-a variável de controle do `for`), sem `elseif`, `break` ou valores não
-numéricos. O `hcc` v0.0.15 compara `F64` incorretamente com literais inteiros
+a variável de controle do `for`), sem valores não numéricos. O `hcc` v0.0.15 compara `F64` incorretamente com literais inteiros
 (`step > 0`) e tipa comparações `F64` como `F64`; o código usa `0.0` e
 desvios explícitos para contornar isso.
+
+O núcleo também aceita `elseif` encadeado e `break` dentro de `while`/`for`.
+Condições de `elseif` posteriores a um ramo já escolhido são analisadas em modo
+de salto. `break` fora de laço lança o erro 24.

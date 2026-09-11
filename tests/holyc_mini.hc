@@ -45,4 +45,19 @@ U0 main() {
   result = LuaMiniRun("if 1 ~= 1 then return 1 end if 2 <= 2 then return 2 end "
       "return 3");
   if (result != 2) throw(15);
+  result = LuaMiniRun("x = 5; if x < 3 then return 1 elseif x < 6 then "
+      "return 2 elseif x < 9 then return 3 else return 4 end");
+  if (result != 2) throw(16);
+  result = LuaMiniRun("x = 9; if x < 3 then return 1 elseif x < 6 then "
+      "return 2 else return 4 end");
+  if (result != 4) throw(17);
+  result = LuaMiniRun("s = 0; for i = 1, 100 do if i > 4 then break end "
+      "s = s + i end return s");
+  if (result != 10) throw(18);
+  result = LuaMiniRun("n = 0; while 1 < 2 do n = n + 1; if n == 7 then "
+      "break end end return n");
+  if (result != 7) throw(19);
+  result = LuaMiniRun("t = 0; for i = 1, 3 do for j = 1, 10 do if j > i then "
+      "break end t = t + 1 end end return t");
+  if (result != 6) throw(20);
 }

@@ -45,6 +45,8 @@ class LuaMiniParser {
   F64 values[8];
   Bool skipping; /* parse without effects: dead branches, finished loops */
   Bool returned;
+  Bool breaking;
+  I64 loop_depth;
   F64 result;
 };
 
@@ -259,6 +261,8 @@ F64 LuaMiniEvalWithRegistry(U8 *source, LuaMiniRegistry *registry) {
   parser.registry = registry;
   parser.skipping = FALSE;
   parser.returned = FALSE;
+  parser.breaking = FALSE;
+  parser.loop_depth = 0;
   LuaMiniSkip(&parser);
   if (source[parser.position] == 'r' && source[parser.position + 1] == 'e' &&
       source[parser.position + 2] == 't' && source[parser.position + 3] == 'u' &&
@@ -301,19 +305,48 @@ U0 LuaMiniSubBlock(LuaMiniParser *parser, Bool execute) {
   saved = parser->skipping;
   parser->skipping = saved || !execute;
   LuaMiniBlock(parser);
-  parser->skipping = saved || parser->returned;
+  parser->skipping = saved || parser->returned || parser->breaking;
 }
 
 U0 LuaMiniIf(LuaMiniParser *parser) {
   Bool condition;
+  Bool taken;
+  Bool saved;
+  saved = parser->skipping;
   condition = LuaMiniCondition(parser);
   LuaMiniExpect(parser, "then", 14);
   LuaMiniSubBlock(parser, condition);
+  taken = condition;
+  while (LuaMiniPeekWord(parser, "elseif")) {
+    LuaMiniWord(parser, "elseif");
+    /* Conditions after a taken branch are parsed without effects. */
+    parser->skipping = parser->skipping || taken;
+    condition = LuaMiniCondition(parser);
+    parser->skipping = saved || parser->returned || parser->breaking;
+    LuaMiniExpect(parser, "then", 14);
+    LuaMiniSubBlock(parser, condition && !taken);
+    taken = taken || condition;
+  }
+  condition = taken;
   if (LuaMiniPeekWord(parser, "else")) {
     LuaMiniWord(parser, "else");
     LuaMiniSubBlock(parser, !condition);
   }
   LuaMiniExpect(parser, "end", 15);
+}
+
+U0 LuaMiniLoopBody(LuaMiniParser *parser, Bool execute) {
+  parser->loop_depth++;
+  LuaMiniSubBlock(parser, execute);
+  parser->loop_depth--;
+  LuaMiniExpect(parser, "end", 17);
+}
+
+/* A loop only starts when effects are enabled, so leaving it via break
+   restores normal execution. */
+U0 LuaMiniEndBreak(LuaMiniParser *parser) {
+  parser->breaking = FALSE;
+  parser->skipping = FALSE;
 }
 
 U0 LuaMiniWhile(LuaMiniParser *parser) {
@@ -325,9 +358,12 @@ U0 LuaMiniWhile(LuaMiniParser *parser) {
     condition = LuaMiniCondition(parser);
     LuaMiniExpect(parser, "do", 21);
     condition = condition && !parser->skipping;
-    LuaMiniSubBlock(parser, condition);
-    LuaMiniExpect(parser, "end", 17);
+    LuaMiniLoopBody(parser, condition);
     if (!condition || parser->returned) return;
+    if (parser->breaking) {
+      LuaMiniEndBreak(parser);
+      return;
+    }
   }
 }
 
@@ -365,9 +401,12 @@ U0 LuaMiniFor(LuaMiniParser *parser) {
     else if (value < limit) running = FALSE;
     if (parser->skipping) running = FALSE;
     if (running) LuaMiniAssign(parser, name, value);
-    LuaMiniSubBlock(parser, running);
-    LuaMiniExpect(parser, "end", 17);
+    LuaMiniLoopBody(parser, running);
     if (!running || parser->returned) return;
+    if (parser->breaking) {
+      LuaMiniEndBreak(parser);
+      return;
+    }
     value += step;
   }
 }
@@ -381,6 +420,13 @@ U0 LuaMiniStatement(LuaMiniParser *parser) {
     if (!parser->skipping) {
       parser->result = value;
       parser->returned = TRUE;
+      parser->skipping = TRUE;
+    }
+  } else if (LuaMiniPeekWord(parser, "break")) {
+    LuaMiniWord(parser, "break");
+    if (parser->loop_depth == 0) throw(24);
+    if (!parser->skipping) {
+      parser->breaking = TRUE;
       parser->skipping = TRUE;
     }
   } else if (LuaMiniPeekWord(parser, "if")) {
@@ -404,12 +450,13 @@ U0 LuaMiniStatement(LuaMiniParser *parser) {
   if (parser->source[parser->position] == ';') parser->position++;
 }
 
-/* Parses statements until end, else, or end of source. */
+/* Parses statements until end, else, elseif, or end of source. */
 U0 LuaMiniBlock(LuaMiniParser *parser) {
   while (TRUE) {
     LuaMiniSkip(parser);
     if (parser->source[parser->position] == 0) return;
-    if (LuaMiniPeekWord(parser, "end") || LuaMiniPeekWord(parser, "else"))
+    if (LuaMiniPeekWord(parser, "end") || LuaMiniPeekWord(parser, "else") ||
+        LuaMiniPeekWord(parser, "elseif"))
       return;
     LuaMiniStatement(parser);
   }
@@ -423,6 +470,8 @@ F64 LuaMiniRunWithRegistry(U8 *source, LuaMiniRegistry *registry) {
   parser.registry = registry;
   parser.skipping = FALSE;
   parser.returned = FALSE;
+  parser.breaking = FALSE;
+  parser.loop_depth = 0;
   parser.result = 0;
   LuaMiniBlock(&parser);
   if (parser.source[parser.position] != 0) throw(4);
