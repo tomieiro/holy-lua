@@ -1,11 +1,12 @@
 /* TempleOS entry point for the Lua runtime. */
 
-#include "../platform/templeos/templeos_api.hc"
+#include "../platform/templeos/lua_runtime.hc"
 
 U0 LuaTempleOSMain() {
-  LuaPlatformInit();
+  LuaRuntime runtime;
+  LuaRuntimeInit(&runtime);
   LuaPlatformWriteLine("Lua para HolyC: runtime em inicializacao");
-  LuaPlatformShutdown();
+  LuaRuntimeShutdown(&runtime);
 }
 
 LuaTempleOSMain();

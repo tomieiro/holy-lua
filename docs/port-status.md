@@ -22,6 +22,11 @@ O mecanismo HolyC de exceções está encapsulado em
 `I64` lançado. A integração com `luaD_rawrunprotected` ainda é o próximo
 passo do port do runtime.
 
+`src/platform/templeos/lua_runtime.hc` reúne a vida útil do runtime,
+incluindo inicialização, allocator, chamadas protegidas e encerramento. O
+entrypoint TempleOS usa esse owner; o próximo trabalho é substituir as
+estruturas C de `lua_State`/`global_State` por estruturas HolyC equivalentes.
+
 O checkout `../templeos` fornece o código-fonte e a documentação das APIs
 HolyC, incluindo `MAlloc`, `Free`, `MemCpy`, `Print`, `FileRead`, `FileWrite`
 e `cnts.jiffies`. Ele não contém neste workspace um compilador HolyC, uma
