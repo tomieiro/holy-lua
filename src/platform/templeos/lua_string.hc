@@ -6,6 +6,7 @@ class LuaString {
   LuaRuntime *runtime;
   I64 length;
   U64 hash;
+  I64 references;
   U8 *data;
 };
 
@@ -25,6 +26,7 @@ LuaString *LuaStringNew(LuaRuntime *runtime, U8 *data, I64 length) {
   if (!string) return NULL;
   string->runtime = runtime;
   string->length = length;
+  string->references = 1;
   string->data = LuaRuntimeAlloc(runtime, length + 1);
   if (!string->data) {
     LuaRuntimeFree(runtime, string(U8 *), sizeof(LuaString));
@@ -49,9 +51,14 @@ Bool LuaStringEqual(LuaString *left, LuaString *right) {
   return TRUE;
 }
 
-U0 LuaStringFree(LuaString *string) {
+U0 LuaStringRetain(LuaString *string) {
+  if (string) string->references++;
+}
+
+U0 LuaStringRelease(LuaString *string) {
   if (!string) return;
+  string->references--;
+  if (string->references > 0) return;
   LuaRuntimeFree(string->runtime, string->data, string->length + 1);
   LuaRuntimeFree(string->runtime, string(U8 *), sizeof(LuaString));
 }
-

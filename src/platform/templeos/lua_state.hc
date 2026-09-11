@@ -24,12 +24,35 @@ class LuaState {
   I64 capacity;
 };
 
+Bool LuaStateGrow(LuaState *state, I64 wanted);
+
 U0 LuaValueNil(LuaValue *value) {
   value->type = LUA_HC_NIL;
   value->boolean = FALSE;
   value->integer = 0;
   value->number = 0;
   value->string = NULL;
+}
+
+U0 LuaValueRelease(LuaValue *value) {
+  if (value->type == LUA_HC_STRING)
+    LuaStringRelease(value->string);
+  LuaValueNil(value);
+}
+
+U0 LuaValueSetString(LuaValue *value, LuaString *string) {
+  LuaValueRelease(value);
+  value->type = LUA_HC_STRING;
+  value->string = string;
+  LuaStringRetain(string);
+}
+
+Bool LuaStatePushString(LuaState *state, LuaString *string) {
+  if (!LuaStateGrow(state, state->top + 1)) return FALSE;
+  LuaValueNil(&state->stack[state->top]);
+  LuaValueSetString(&state->stack[state->top], string);
+  state->top++;
+  return TRUE;
 }
 
 U0 LuaStateInit(LuaState *state, LuaRuntime *runtime) {
@@ -76,10 +99,14 @@ Bool LuaStatePop(LuaState *state, LuaValue *value) {
   if (state->top <= 0) return FALSE;
   state->top--;
   *value = state->stack[state->top];
+  LuaValueNil(&state->stack[state->top]);
   return TRUE;
 }
 
 U0 LuaStateClose(LuaState *state) {
+  I64 i;
+  for (i = 0; i < state->top; i++)
+    LuaValueRelease(&state->stack[i]);
   if (state->stack)
     LuaRuntimeFree(state->runtime, state->stack(U8 *),
         state->capacity * sizeof(LuaValue));

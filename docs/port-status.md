@@ -48,6 +48,11 @@ explícito, terminador NUL, hash e comparação por conteúdo. O objeto e seus
 bytes são liberados pelo mesmo `LuaRuntime`; a integração das strings como
 chaves de tabela e objetos rastreados pelo GC ainda está pendente.
 
+`LuaString` agora tem contagem de referências. `LuaValue` retém e libera a
+string ao ser atribuído, removido da stack ou encerrado. A tabela ainda usa
+somente chaves inteiras; o próximo passo é aplicar o mesmo ownership às
+entradas com chave string.
+
 ## Ordem do port
 
 1. tipos e configuração (`luaconf.h`, `llimits.h`);
