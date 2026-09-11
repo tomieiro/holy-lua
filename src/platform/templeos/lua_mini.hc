@@ -172,6 +172,30 @@ F64 LuaMiniExpression(LuaMiniParser *parser) {
   }
 }
 
+Bool LuaMiniCondition(LuaMiniParser *parser) {
+  F64 left;
+  F64 right;
+  U8 operation;
+  left = LuaMiniExpression(parser);
+  LuaMiniSkip(parser);
+  operation = parser->source[parser->position++];
+  right = LuaMiniExpression(parser);
+  if (operation == '>') return left > right;
+  if (operation == '<') return left < right;
+  if (operation == '=' && parser->source[parser->position] == '=') {
+    parser->position++;
+    return left == right;
+  }
+  throw(13);
+  return FALSE;
+}
+
+Bool LuaMiniWord(LuaMiniParser *parser, U8 *word) {
+  U8 actual[32];
+  LuaMiniReadName(parser, actual);
+  return LuaMiniNameEqual(actual, word);
+}
+
 F64 LuaMiniEval(U8 *source) {
   LuaMiniParser parser;
   F64 result;
@@ -199,6 +223,45 @@ F64 LuaMiniRun(U8 *source) {
   while (TRUE) {
     LuaMiniSkip(&parser);
     if (parser.source[parser.position] == 0) throw(8);
+    if (parser.source[parser.position] == 'i' &&
+        parser.source[parser.position + 1] == 'f') {
+      Bool condition;
+      parser.position += 2;
+      condition = LuaMiniCondition(&parser);
+      LuaMiniSkip(&parser);
+      if (!LuaMiniWord(&parser, "then")) throw(14);
+      if (condition) {
+        LuaMiniSkip(&parser);
+        if (parser.source[parser.position] == 'r')
+          if (!LuaMiniWord(&parser, "return")) throw(18);
+        result = LuaMiniExpression(&parser);
+        LuaMiniSkip(&parser);
+        if (parser.source[parser.position] == 'e' &&
+            parser.source[parser.position + 1] == 'l' &&
+            LuaMiniWord(&parser, "else")) {
+          LuaMiniExpression(&parser);
+          LuaMiniSkip(&parser);
+        }
+        if (!LuaMiniWord(&parser, "end")) throw(15);
+        return result;
+      }
+      while (parser.source[parser.position] &&
+          !(parser.source[parser.position] == 'e' &&
+            (parser.source[parser.position + 1] == 'l' ||
+             parser.source[parser.position + 1] == 'n'))) parser.position++;
+      LuaMiniSkip(&parser);
+      if (parser.source[parser.position] == 'e' &&
+          parser.source[parser.position + 1] == 'l') {
+        if (!LuaMiniWord(&parser, "else")) throw(16);
+        LuaMiniSkip(&parser);
+        if (parser.source[parser.position] == 'r')
+          if (!LuaMiniWord(&parser, "return")) throw(19);
+        result = LuaMiniExpression(&parser);
+        LuaMiniSkip(&parser);
+      }
+      if (!LuaMiniWord(&parser, "end")) throw(17);
+      return result;
+    }
     if (parser.source[parser.position] == 'r' &&
         parser.source[parser.position + 1] == 'e' &&
         parser.source[parser.position + 2] == 't' &&

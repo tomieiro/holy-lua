@@ -43,9 +43,9 @@
 @contract id=holyc_gc_roots path=src/platform/templeos/lua_gc.hc claim="GC facade records state/table roots and sweeps pool-only strings without invalidating retained values" evidence=src/platform/templeos/lua_gc.hc
 @contract id=holyc_call path=src/platform/templeos/lua_call.hc claim="native closures execute through a growable frame stack and protected error boundary" evidence=src/platform/templeos/lua_call.hc
 @contract id=holyc_call_abi path=src/platform/templeos/lua_call.hc claim="native closure ABI writes result through an output I64 parameter to remain compatible with hcc function pointers" evidence=src/platform/templeos/lua_call.hc
-@contract id=holyc_mini_eval path=src/platform/templeos/lua_mini.hc claim="mini evaluator handles return, numeric literals, locals, calls to abs/sqrt/len, parentheses, and arithmetic precedence" evidence=src/platform/templeos/lua_mini.hc
+@contract id=holyc_mini_eval path=src/platform/templeos/lua_mini.hc claim="mini evaluator handles return, numeric literals, locals, calls to abs/sqrt/len, conditionals, parentheses, and arithmetic precedence" evidence=src/platform/templeos/lua_mini.hc
 @task id=port_memory status=active next="connect LuaMemory to the HolyC Lua state implementation"
-@task id=port_state status=active next="add conditional control flow and general native function registration"
+@task id=port_state status=active next="add general native function registration to the executable Lua nucleus"
 @task id=port_strings status=active next="add garbage collection roots for interned strings and tables"
 @task id=port_gc status=active next="replace reference-counted string sweep with full object marking"
 @task id=port_runtime status=active next="port memory first, then replace non-local error handling in ldo.c"

@@ -12,4 +12,8 @@ U0 main() {
   if (result != 13) throw(3);
   result = LuaMiniEval("abs(-8) + sqrt(9) + len(\"abc\")");
   if (result != 14) throw(4);
+  result = LuaMiniRun("if 3 > 2 then return 9 end");
+  if (result != 9) throw(5);
+  result = LuaMiniRun("if 1 > 2 then return 9 else return 6 end");
+  if (result != 6) throw(6);
 }

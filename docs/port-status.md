@@ -98,3 +98,8 @@ avalia literais numéricos, variáveis locais, atribuições, `return`, chamadas
 incluindo erros protegidos por `throw`. `tests/holyc_mini.hc` executa esse
 fluxo ponta a ponta com `hcc -jit`. Ainda não é a VM Lua completa; é o núcleo
 funcional sobre o qual serão adicionados variáveis, chamadas e bytecode.
+
+O núcleo também suporta a forma limitada `if condição then return expr end`
+e `if condição then return expr else return expr end`, com comparações
+numéricas `<`, `>` e `==`. Essa gramática é intencionalmente pequena até que
+o registro geral de funções nativas esteja definido.
