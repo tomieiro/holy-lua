@@ -215,16 +215,31 @@ LuaMiniValue LuaMiniConcat(LuaMiniValue left, LuaMiniValue right) {
   return value;
 }
 
+/* A user-defined function: `function name(a, b) ... end` at global scope.
+   Only its body's text position is stored; calling it re-enters the
+   recursive-descent parser at that position under a fresh local scope. */
+class LuaMiniFunctionDef {
+  U8 name[32];
+  I64 body_position;
+  I64 param_count;
+  U8 param_names[8][32];
+};
+
 class LuaMiniParser {
   U8 *source;
   I64 position;
   I64 binding_count; /* locals form a stack; blocks pop back to a mark */
   LuaMiniRegistry *registry;
-  U8 names[16][32];
-  LuaMiniValue values[16];
+  /* Sized for real recursion: each call frame consumes one slot per
+     parameter/local and is only popped when the call returns. */
+  U8 names[64][32];
+  LuaMiniValue values[64];
   I64 global_count;
   U8 global_names[16][32];
   LuaMiniValue global_values[16];
+  I64 function_count;
+  LuaMiniFunctionDef functions[8];
+  I64 call_depth; /* recursion guard, shared with the real HolyC C stack */
   Bool skipping; /* parse without effects: dead branches, finished loops */
   Bool returned;
   Bool breaking;
@@ -248,6 +263,10 @@ LuaMiniValue LuaMiniOr(LuaMiniParser *parser);
 Bool LuaMiniNameEqual(U8 *left, U8 *right);
 Bool LuaMiniWord(LuaMiniParser *parser, U8 *word);
 Bool LuaMiniPeekWord(LuaMiniParser *parser, U8 *word);
+LuaMiniFunctionDef *LuaMiniFindFunction(LuaMiniParser *parser, U8 *name);
+LuaMiniValue LuaMiniCallFunction(LuaMiniParser *parser, LuaMiniFunctionDef *fn,
+    LuaMiniValue *args, I64 arg_count);
+U0 LuaMiniFunctionDecl(LuaMiniParser *parser);
 
 Bool LuaMiniIsName(U8 ch) {
   return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_';
@@ -317,7 +336,7 @@ LuaMiniValue LuaMiniLookup(LuaMiniParser *parser, U8 *name) {
 /* Declares a new local in the current scope, shadowing outer names. */
 U0 LuaMiniDeclare(LuaMiniParser *parser, U8 *name, LuaMiniValue value) {
   if (parser->skipping) return;
-  if (parser->binding_count >= 16) throw(7);
+  if (parser->binding_count >= 64) throw(7);
   MemCpy(parser->names[parser->binding_count], name, 32);
   parser->values[parser->binding_count++] = value;
 }
@@ -430,7 +449,33 @@ LuaMiniValue LuaMiniPrimary(LuaMiniParser *parser) {
       return value;
     }
     if (parser->source[parser->position] == '(') {
+      LuaMiniFunctionDef *fn;
       parser->position++;
+      fn = LuaMiniFindFunction(parser, name);
+      if (fn) {
+        LuaMiniValue args[8];
+        I64 arg_count;
+        arg_count = 0;
+        LuaMiniSkip(parser);
+        if (parser->source[parser->position] != ')') {
+          while (TRUE) {
+            LuaMiniValue arg;
+            arg = LuaMiniOr(parser);
+            if (arg_count < 8) args[arg_count++] = arg;
+            LuaMiniSkip(parser);
+            if (parser->source[parser->position] == ',') {
+              parser->position++;
+              continue;
+            }
+            break;
+          }
+        }
+        if (parser->source[parser->position] != ')') throw(2);
+        parser->position++;
+        if (parser->skipping) value = LuaMiniNil();
+        else value = LuaMiniCallFunction(parser, fn, args, arg_count);
+        return value;
+      }
       if (LuaMiniNameEqual(name, "len")) {
         value = LuaMiniOr(parser);
         value = LuaMiniNumberValue(LuaMiniLen(parser, value));
@@ -451,22 +496,24 @@ LuaMiniValue LuaMiniPrimary(LuaMiniParser *parser) {
           value = LuaMiniStringValue("string", 6);
         else value = LuaMiniStringValue("number", 6);
       } else {
+        LuaMiniNative *native = LuaMiniFindNative(parser->registry, name);
+        /* An unrecognized name is reported before parsing its (possibly
+           absent, possibly malformed) argument, rather than falling
+           through into a confusing "bad number" error. */
+        if (native == NULL && !LuaMiniNameEqual(name, "abs") &&
+            !LuaMiniNameEqual(name, "sqrt") && !parser->skipping)
+          throw(12);
         value = LuaMiniOr(parser);
         if (LuaMiniNameEqual(name, "abs"))
           value = LuaMiniNumberValue(fabs(LuaMiniNum(parser, value)));
         else if (LuaMiniNameEqual(name, "sqrt"))
           value = LuaMiniNumberValue(sqrt(LuaMiniNum(parser, value)));
-        else {
-          LuaMiniNative *native = LuaMiniFindNative(parser->registry, name);
-          if (!native) {
-            if (!parser->skipping) throw(12);
-          } else if (!parser->skipping) {
-            F64 argument;
-            F64 native_result;
-            argument = LuaMiniNum(parser, value);
-            native->function(argument, &native_result);
-            value = LuaMiniNumberValue(native_result);
-          }
+        else if (native != NULL && !parser->skipping) {
+          F64 argument;
+          F64 native_result;
+          argument = LuaMiniNum(parser, value);
+          native->function(argument, &native_result);
+          value = LuaMiniNumberValue(native_result);
         }
       }
       LuaMiniSkip(parser);
@@ -669,6 +716,8 @@ LuaMiniValue LuaMiniEvalWithRegistryValue(U8 *source, LuaMiniRegistry *registry)
   parser.position = 0;
   parser.binding_count = 0;
   parser.global_count = 0;
+  parser.function_count = 0;
+  parser.call_depth = 0;
   parser.registry = registry;
   parser.skipping = FALSE;
   parser.returned = FALSE;
@@ -897,6 +946,9 @@ U0 LuaMiniStatement(LuaMiniParser *parser) {
       MemCpy(parser->jump_label, name, 32);
       parser->skipping = TRUE;
     }
+  } else if (LuaMiniPeekWord(parser, "function")) {
+    LuaMiniWord(parser, "function");
+    LuaMiniFunctionDecl(parser);
   } else {
     Bool local;
     I64 start;
@@ -976,12 +1028,118 @@ U0 LuaMiniBlock(LuaMiniParser *parser) {
   }
 }
 
+LuaMiniFunctionDef *LuaMiniFindFunction(LuaMiniParser *parser, U8 *name) {
+  I64 i;
+  for (i = 0; i < parser->function_count; i++)
+    if (LuaMiniNameEqual(parser->functions[i].name, name))
+      return &parser->functions[i];
+  return NULL;
+}
+
+/* `function name(a, b) ... end`, only at global/top-level scope, parsed as
+   a declaration: the body is skipped over (parsed but not executed) and
+   only its text position is recorded; LuaMiniCallFunction re-enters the
+   parser there on each call. */
+U0 LuaMiniFunctionDecl(LuaMiniParser *parser) {
+  U8 function_name[32];
+  LuaMiniFunctionDef *def;
+  Bool saved;
+  LuaMiniReadName(parser, function_name);
+  LuaMiniSkip(parser);
+  if (parser->source[parser->position++] != '(') throw(29);
+  def = NULL;
+  if (!parser->skipping) {
+    if (parser->function_count >= 8) throw(30);
+    def = &parser->functions[parser->function_count++];
+    MemCpy(def->name, function_name, 32);
+    def->param_count = 0;
+  }
+  LuaMiniSkip(parser);
+  if (parser->source[parser->position] != ')') {
+    while (TRUE) {
+      U8 param_name[32];
+      LuaMiniReadName(parser, param_name);
+      if (def && def->param_count < 8)
+        MemCpy(def->param_names[def->param_count++], param_name, 32);
+      LuaMiniSkip(parser);
+      if (parser->source[parser->position] == ',') {
+        parser->position++;
+        continue;
+      }
+      break;
+    }
+  }
+  if (parser->source[parser->position] != ')') throw(2);
+  parser->position++;
+  if (def) def->body_position = parser->position;
+  /* The body is only ever entered through a call (LuaMiniCallFunction);
+     here it is just skipped over structurally. */
+  saved = parser->skipping;
+  parser->skipping = TRUE;
+  LuaMiniBlock(parser);
+  parser->skipping = saved;
+  LuaMiniExpect(parser, "end", 15);
+}
+
+/* Calls a user-defined function by re-entering the parser at its stored
+   body position under a fresh local scope, saving and restoring every
+   piece of parser state the body could touch. Recursion is ordinary C
+   recursion through this function; call_depth bounds it well under the
+   real stack limit. */
+LuaMiniValue LuaMiniCallFunction(LuaMiniParser *parser, LuaMiniFunctionDef *fn,
+    LuaMiniValue *args, I64 arg_count) {
+  I64 saved_position;
+  I64 saved_binding_count;
+  Bool saved_returned;
+  Bool saved_breaking;
+  Bool saved_jumping;
+  I64 saved_loop_depth;
+  LuaMiniValue saved_result;
+  LuaMiniValue result;
+  I64 i;
+  if (parser->call_depth >= 200) throw(31);
+  parser->call_depth++;
+  saved_position = parser->position;
+  saved_binding_count = parser->binding_count;
+  saved_returned = parser->returned;
+  saved_breaking = parser->breaking;
+  saved_jumping = parser->jumping;
+  saved_loop_depth = parser->loop_depth;
+  saved_result = parser->result;
+  parser->position = fn->body_position;
+  parser->returned = FALSE;
+  parser->breaking = FALSE;
+  parser->jumping = FALSE;
+  parser->loop_depth = 0;
+  for (i = 0; i < fn->param_count; i++) {
+    LuaMiniValue arg;
+    if (i < arg_count) arg = args[i];
+    else arg = LuaMiniNil();
+    LuaMiniDeclare(parser, fn->param_names[i], arg);
+  }
+  LuaMiniBlock(parser);
+  if (parser->returned) result = parser->result;
+  else result = LuaMiniNil();
+  parser->position = saved_position;
+  parser->binding_count = saved_binding_count;
+  parser->returned = saved_returned;
+  parser->breaking = saved_breaking;
+  parser->jumping = saved_jumping;
+  parser->loop_depth = saved_loop_depth;
+  parser->result = saved_result;
+  parser->skipping = FALSE; /* only called when the call site was live */
+  parser->call_depth--;
+  return result;
+}
+
 LuaMiniValue LuaMiniRunWithRegistryValue(U8 *source, LuaMiniRegistry *registry) {
   LuaMiniParser parser;
   parser.source = source;
   parser.position = 0;
   parser.binding_count = 0;
   parser.global_count = 0;
+  parser.function_count = 0;
+  parser.call_depth = 0;
   parser.registry = registry;
   parser.skipping = FALSE;
   parser.returned = FALSE;

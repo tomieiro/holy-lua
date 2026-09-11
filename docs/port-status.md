@@ -220,3 +220,48 @@ num escopo plano com no máximo 16 locais e 16 globais.
 
 Ambos foram descobertos por bisecção manual com `hcc -jit` sobre programas
 mínimos, já que o segfault não deixa nenhuma mensagem de diagnóstico.
+
+## Funções definidas em Lua, com recursão real
+
+`function nome(a, b) ... end` agora é suportado, incluindo recursão de
+verdade (`fact(10)`, `fib(15)` testados). A declaração só registra o nome,
+a posição do corpo no texto-fonte e os nomes dos parâmetros
+(`LuaMiniFunctionDef`); o corpo em si é varrido em modo de salto na
+declaração (sem executar) e só é de fato interpretado a cada chamada.
+
+Uma chamada (`LuaMiniCallFunction`) salva posição, contagem de locais,
+`returned`/`breaking`/`jumping`/`loop_depth`/resultado do parser, pula o
+cursor para a posição salva do corpo, declara os parâmetros como locais
+novos (argumentos faltantes viram `nil`), roda o bloco, captura o valor de
+`return` (ou `nil` se não houve `return`) e restaura tudo antes de
+retornar ao ponto de chamada. A recursão é recursão de C de verdade,
+através de `LuaMiniCallFunction`/`LuaMiniBlock`/`LuaMiniStatement`/
+`LuaMiniPrimary` — não há pilha de chamadas própria da VM.
+
+Chamadas aceitam múltiplos argumentos separados por vírgula (até 8),
+diferente das funções embutidas de um argumento (`abs`/`sqrt`/`len`/
+`print`/`type`/nativas registradas), que continuam como estão.
+
+Como as funções vivem no mesmo array plano de locais usado por blocos e
+laços, o array de locais cresceu de 16 para 64 posições — cada quadro de
+chamada consome um slot por parâmetro e só é liberado quando a chamada
+retorna, então essa é a limitação prática de profundidade de recursão
+(não o limite de 200 do contador `call_depth`, que na prática nunca é
+alcançado primeiro).
+
+Chamar um nome não reconhecido (`nem_função_nem_nativa()`) agora lança o
+erro 12 de forma limpa, mesmo sem argumentos — antes disso caía sem querer
+na análise de "número inválido" ao tentar interpretar o `)` vazio como uma
+expressão.
+
+Limitações que continuam: sem tabelas, sem closures/upvalues (uma função
+só enxerga globais e seus próprios parâmetros/locais, nunca locais de um
+escopo pai), sem `local function`, sem múltiplos valores de retorno, sem
+`elseif` dentro de expressões, sem coerção número↔string em comparações.
+
+Um terceiro bug do `hcc` v0.0.15 apareceu neste milestone: `&&` rejeita um
+operando que seja um ponteiro puro (ou uma negação `!ponteiro`)
+encadeado com mais termos `&&` (`"cannot be applied to a pointer type"`).
+A correção é comparar explicitamente com `NULL`
+(`ponteiro != NULL && ...`); um `!ponteiro` isolado, fora de `&&`, funciona
+normalmente.

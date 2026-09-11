@@ -13,6 +13,7 @@ U0 CountedTriple(F64 argument, F64 *result) {
 }
 
 U0 LuaMiniGeneralValues(LuaMiniRegistry *registry);
+U0 LuaMiniFunctionTests();
 
 U0 main() {
   F64 result;
@@ -106,6 +107,7 @@ U0 main() {
   if (result != 10) throw(34);
 
   LuaMiniGeneralValues(&registry);
+  LuaMiniFunctionTests();
 }
 
 /* General Lua values: strings, booleans, nil, concatenation, and/or,
@@ -186,4 +188,58 @@ U0 LuaMiniGeneralValues(LuaMiniRegistry *registry) {
 
   value = LuaMiniEvalValue("1 <= 1 and 2 >= 2 and 1 ~= 2");
   if (value.type != MINI_BOOL || !value.boolean) throw(50);
+}
+
+/* User-defined functions, including real recursion through the host C
+   stack, and calling an undefined name as an error. */
+U0 LuaMiniFunctionTests() {
+  F64 result;
+  LuaMiniValue value;
+
+  result = LuaMiniRun("function square(x) return x * x end return square(7)");
+  if (result != 49) throw(51);
+
+  result = LuaMiniRun(
+      "function fact(n) if n <= 1 then return 1 end "
+      "return n * fact(n - 1) end return fact(10)");
+  if (result != 3628800) throw(52);
+
+  result = LuaMiniRun(
+      "function fib(n) if n < 2 then return n end "
+      "return fib(n - 1) + fib(n - 2) end return fib(15)");
+  if (result != 610) throw(53);
+
+  result = LuaMiniRun("function add(a, b) return a + b end "
+      "return add(3, 4) + add(10, 20)");
+  if (result != 37) throw(54);
+
+  value = LuaMiniRunValue("function greet(name) return \"hi \" .. name end "
+      "return greet(\"lua\")");
+  if (value.type != MINI_STRING) throw(55);
+  if (!LuaMiniNameEqual(value.text, "hi lua")) throw(55);
+
+  result = LuaMiniRun("function noargs() return 42 end return noargs()");
+  if (result != 42) throw(56);
+
+  /* A function body can assign to globals, and a missing argument reads
+     as nil. */
+  result = LuaMiniRun("s = 0; function addTo(x) s = s + x end "
+      "for i = 1, 5 do addTo(i) end return s");
+  if (result != 15) throw(57);
+  value = LuaMiniRunValue(
+      "function isNil(x) return x == nil end return isNil()");
+  if (value.type != MINI_BOOL || !value.boolean) throw(58);
+
+  /* Calling an unrecognized name is a clean error (12), not a parse
+     failure from misreading its argument list. */
+  {
+    Bool caught;
+    caught = FALSE;
+    try {
+      LuaMiniRun("function f() return 1 end return notdefined()");
+    } catch {
+      caught = TRUE;
+    }
+    if (!caught) throw(59);
+  }
 }
