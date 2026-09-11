@@ -215,14 +215,20 @@ F64 LuaMiniTerm(LuaMiniParser *parser) {
   while (TRUE) {
     LuaMiniSkip(parser);
     operation = parser->source[parser->position];
-    if (operation != '*' && operation != '/') return left;
+    if (operation != '*' && operation != '/' && operation != '%') return left;
     parser->position++;
     right = LuaMiniPrimary(parser);
     if (operation == '/') {
-      if (right == 0) {
+      if (right == 0.0) {
         if (!parser->skipping) throw(3);
       } else left /= right;
-    } else left *= right;
+    } else if (operation == '*') left *= right;
+    else {
+      /* Lua's % is floored modulo: result has the divisor's sign. */
+      if (right == 0.0) {
+        if (!parser->skipping) throw(3);
+      } else left -= floor(left / right) * right;
+    }
   }
 }
 

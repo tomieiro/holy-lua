@@ -70,4 +70,10 @@ U0 main() {
   result = LuaMiniRun("s = 0; for i = 1, 20 do local d = i * 2; s = s + d end "
       "return s");
   if (result != 420) throw(24);
+  result = LuaMiniEval("17 % 5");
+  if (result != 2) throw(25);
+  result = LuaMiniEval("return -1 % 5");
+  if (result != 4) throw(26);
+  result = LuaMiniRun("m = 0; for i = 1, 20 do m = i % 3 end return m");
+  if (result != 2) throw(27);
 }

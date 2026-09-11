@@ -46,11 +46,11 @@
 @contract id=holyc_gc_roots path=src/platform/templeos/lua_gc.hc claim="GC facade records state/table roots and sweeps pool-only strings without invalidating retained values" evidence=src/platform/templeos/lua_gc.hc
 @contract id=holyc_call path=src/platform/templeos/lua_call.hc claim="native closures execute through a growable frame stack and protected error boundary" evidence=src/platform/templeos/lua_call.hc
 @contract id=holyc_call_abi path=src/platform/templeos/lua_call.hc claim="native closure ABI writes result through an output I64 parameter to remain compatible with hcc function pointers" evidence=src/platform/templeos/lua_call.hc
-@contract id=holyc_mini_eval path=src/platform/templeos/lua_mini.hc claim="mini evaluator handles return, numeric literals, block-scoped locals and globals, calls to abs/sqrt/len, nested if/elseif/else blocks, break, while and numeric for loops, comparisons < <= > >= == ~=, parentheses, and arithmetic precedence" evidence=src/platform/templeos/lua_mini.hc
+@contract id=holyc_mini_eval path=src/platform/templeos/lua_mini.hc claim="mini evaluator handles return, numeric literals, block-scoped locals and globals, calls to abs/sqrt/len, nested if/elseif/else blocks, break, while and numeric for loops, comparisons < <= > >= == ~=, parentheses, and arithmetic + - * / % with precedence and floored modulo" evidence=src/platform/templeos/lua_mini.hc
 @contract id=holyc_mini_skip path=src/platform/templeos/lua_mini.hc claim="non-executed blocks are parsed in skip mode: no assignments, native calls, unknown-name or division errors" evidence=src/platform/templeos/lua_mini.hc
 @contract id=holyc_mini_registry path=src/platform/templeos/lua_mini.hc claim="registry exposes named native functions using output-parameter hcc ABI" evidence=src/platform/templeos/lua_mini.hc
 @task id=port_memory status=active next="connect LuaMemory to the HolyC Lua state implementation"
-@task id=port_state status=paused next="add general values (strings, booleans, nil, tables) to executable Lua nucleus" note="loops, elseif, break and block scoping implemented and validated with hcc -jit tests/holyc_mini.hc"
+@task id=port_state status=paused next="add general values (strings, booleans, nil, tables) to executable Lua nucleus" note="loops, elseif, break, block scoping and floored modulo implemented and validated with hcc -jit tests/holyc_mini.hc"
 @task id=port_strings status=active next="add garbage collection roots for interned strings and tables"
 @task id=port_gc status=active next="replace reference-counted string sweep with full object marking"
 @task id=port_runtime status=active next="port memory first, then replace non-local error handling in ldo.c"

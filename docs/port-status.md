@@ -131,3 +131,7 @@ bloco atual (podendo sombrear nomes externos) e é descartada ao fim do bloco;
 atribuição sem `local` altera o local visível mais interno ou, na ausência
 dele, uma global. A variável de controle do `for` é local ao corpo do laço.
 Há até 16 locais vivos e 16 globais.
+
+O operador `%` foi adicionado com a semântica de módulo floor de Lua (o
+resultado tem o sinal do divisor, ex.: `-1 % 5 == 4`), com a mesma precedência
+de `*` e `/`.
